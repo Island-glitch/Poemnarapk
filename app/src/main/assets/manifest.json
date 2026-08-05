@@ -1,0 +1,21 @@
+{
+  "short_name": "叙事诗",
+  "name": "叙事诗小手机",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#f4f6fa",
+  "theme_color": "#1e88e5",
+  "display": "standalone",
+  "orientation": "portrait"
+}

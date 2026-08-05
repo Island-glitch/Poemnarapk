@@ -1,0 +1,250 @@
+#app-window-container {
+  position: absolute;
+  top: env(safe-area-inset-top, 0px); 
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 0; right: 0;
+  pointer-events: none;
+  z-index: 9999; 
+}
+
+.app-window {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-color: var(--bg-main);
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(0.1, 0.9, 0.2, 1), opacity 0.25s linear;
+  z-index: 101;
+  overflow: hidden; 
+}
+.app-window.active {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 核心重构：绝对定位居中，并让标题栏两端干净排开 */
+.win-header {
+  position: relative; /* 建立标题居中基准定位 */
+  height: 56px;
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* 按钮分列两端 */
+  padding: 0 16px;
+}
+.win-header h3 {
+  font-size: 16px;
+  color: var(--text-primary);
+  font-weight: 700;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none; /* 核心修复：点击穿透，彻底杜绝阻挡按键响应的死区 [1] */
+}
+
+.btn-icon {
+  background: none; border: none;
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.2s;
+  z-index: 10; /* 提升按钮层级 */
+}
+.btn-icon:hover {
+  background-color: var(--surface-hover);
+  color: var(--primary);
+}
+.btn-icon svg { width: 22px; height: 22px; }
+
+.win-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* 一级主菜单 */
+.menu-item {
+  background-color: var(--surface);
+  padding: 16px;
+  border-radius: var(--radius);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.menu-item .chevron { width: 20px; height: 20px; color: var(--text-secondary); }
+
+/* 表单组件 */
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600;
+}
+input[type="text"], input[type="password"], input[type="number"], select, textarea {
+  width: 100%; padding: 11px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  font-size: 13px; color: var(--text-primary);
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--primary); }
+
+.btn {
+  padding: 10px 18px; border-radius: var(--radius); border: none;
+  background-color: var(--primary); color: white;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-primary { background-color: var(--primary); }
+.btn-outline { background-color: transparent; border: 1.5px solid var(--primary); color: var(--primary); }
+.btn-danger-outline { background-color: transparent; border: 1.5px solid var(--danger); color: var(--danger); }
+
+/* 档案卡与折叠机制 */
+.archive-group-wrapper {
+  margin-bottom: 12px;
+}
+.archive-group-header {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.archive-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.archive-group-content.collapsed { display: none; }
+
+.archive-card {
+  background-color: var(--surface);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+}
+.card-avatar {
+  width: 44px; height: 44px; border-radius: 50%; object-fit: cover; margin-right: 12px;
+}
+.card-info { flex: 1; }
+.card-name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.card-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+/* 档案添加上方头像 */
+.avatar-uploader-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.avatar-preview-circle {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  background-color: var(--primary-light);
+  border: 2px dashed var(--primary);
+  display: flex;
+  justify-content: center; align-items: center;
+  overflow: hidden; cursor: pointer;
+  position: relative;
+}
+.avatar-preview-circle img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-preview-circle svg { width: 32px; height: 32px; color: var(--primary); }
+.upload-tip { font-size: 11px; color: var(--text-secondary); margin-top: 8px; }
+
+/* 模态框与过渡 */
+.modal-overlay {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-color: rgba(15,23,42,0.4);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 200; opacity: 0; pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.modal-overlay.active { opacity: 1; pointer-events: auto; }
+.modal {
+  background-color: var(--bg-main);
+  border-top-left-radius: 24px; border-top-right-radius: 24px;
+  width: 100%; max-height: 85%; overflow-y: auto;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.1, 0.9, 0.2, 1);
+  padding-bottom: 30px;
+}
+.modal-overlay.active .modal { transform: translateY(0); }
+.modal-header {
+  padding: 16px; background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+.archive-tabs {
+  height: 58px; background-color: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: space-around; align-items: center;
+}
+.tab-item {
+  background: none; border: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--text-secondary); cursor: pointer; width: 60px;
+}
+.tab-item svg { width: 22px; height: 22px; margin-bottom: 2px; }
+.tab-item span { font-size: 10px; font-weight: 600; }
+.tab-item.active { color: var(--primary); }
+
+/* 世界书滑动开关样式 */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #cbd5e1;
+  transition: .3s;
+  border-radius: 24px;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+input:checked + .slider {
+  background-color: #07c160; 
+}
+input:checked + .slider:before {
+  transform: translateX(20px);
+}

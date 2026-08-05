@@ -1,0 +1,103 @@
+/* focus.css - 专注空间专属简美微气泡样式体系 */
+
+#win-focus-setup {
+  background: linear-gradient(135deg, #fef2f2 0%, #f0fdf4 50%, #eff6ff 100%) !important;
+}
+
+#win-focus-setup .win-body {
+  background: rgba(255, 255, 255, 0.42) !important;
+  backdrop-filter: blur(24px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(120%) !important;
+  border-radius: 24px !important;
+  margin: 14px !important;
+  padding: 16px !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: 0 10px 40px rgba(31, 38, 135, 0.03) !important;
+  box-sizing: border-box !important;
+}
+
+#win-focus-setup .mcp-card {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 14px 4px !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+  margin-bottom: 0 !important;
+  transition: none !important;
+}
+
+#win-focus-setup .mcp-card:last-of-type {
+  border-bottom: none !important;
+}
+
+/* 时间旋转仪仿真刻度转盘样式 */
+.focus-dial-container {
+  position: relative;
+  width: 170px;
+  height: 170px;
+  margin: 16px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: none;
+}
+
+.focus-dial-wheel {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0) 60%, rgba(220,230,250,0.4) 100%),
+              conic-gradient(from 0deg, #f3f4f6 0%, #e5e7eb 10%, #f3f4f6 20%, #e5e7eb 30%, #f3f4f6 40%, #e5e7eb 50%, #f3f4f6 60%, #e5e7eb 70%, #f3f4f6 80%, #e5e7eb 90%, #f3f4f6 100%);
+  border: 4px solid rgba(255, 255, 255, 0.8);
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.05), 0 10px 25px rgba(0,0,0,0.06);
+  cursor: grab;
+  touch-action: none;
+  will-change: transform;
+}
+
+.focus-dial-wheel::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 14px;
+  background: #3b82f6;
+  border-radius: 2px;
+  box-shadow: 0 0 4px rgba(59,130,246,0.5);
+}
+
+.focus-dial-center {
+  position: absolute;
+  width: 116px;
+  height: 116px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* 环境音高亮激活态样式 */
+#btn-focus-ambient-sound {
+  transition: all 0.2s ease;
+}
+
+#btn-focus-ambient-sound.active {
+  color: #3b82f6 !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  border-radius: 50%;
+}

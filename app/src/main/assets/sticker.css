@@ -1,0 +1,309 @@
+/* ========================================
+   叙事诗小手机 - 表情包管理面板样式 (微信全屏子页重构版)
+   ======================================== */
+
+/* --- 表情包管理全屏面板 --- */
+.sticker-manager-overlay {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: var(--bg-main);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.3s cubic-bezier(0.1, 0.9, 0.2, 1), visibility 0s linear 0.3s;
+  z-index: 400; /* 表情包管理页层级 */
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+.sticker-manager-overlay.active {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: transform 0.3s cubic-bezier(0.1, 0.9, 0.2, 1), visibility 0s linear 0s;
+}
+
+.sticker-manager-panel {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-main);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- 分组标签栏 --- */
+.sticker-group-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.sticker-group-tabs::-webkit-scrollbar { display: none; }
+.sticker-group-tab {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--surface, #fff);
+  border: 1.5px solid var(--border, #e2e8f0);
+  color: var(--text-secondary, #64748b);
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+.sticker-group-tab.active {
+  background: #ec4899;
+  color: #fff;
+  border-color: #ec4899;
+  box-shadow: 0 4px 10px rgba(236, 72, 153, 0.2);
+}
+
+/* --- 表情包卡片管理网格 --- */
+.sticker-manager-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.sticker-manager-card {
+  background: var(--surface, #fff);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1.5px solid var(--border, #e2e8f0);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.sticker-manager-card:active {
+  transform: scale(0.95);
+}
+.sticker-manager-card .sticker-preview {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  background: #f8fafc;
+}
+.sticker-manager-card .sticker-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.sticker-manager-card .sticker-caption {
+  padding: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary, #1e293b);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px solid var(--border, #e2e8f0);
+  background: #fff;
+}
+
+/* --- 添加表情包浮层 (层级提升至1200，防止被遮挡) --- */
+.sticker-add-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 1200; 
+  display: none;
+  justify-content: center;
+  align-items: center;
+  pointer-events: auto;
+}
+.sticker-add-overlay.active { display: flex; }
+
+.sticker-add-modal {
+  width: 90%; max-width: 340px;
+  background: var(--bg, #f4f6fa);
+  border-radius: 20px;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.sticker-add-modal h4 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  text-align: center;
+}
+.sticker-add-modal .form-group {
+  margin-bottom: 12px;
+}
+.sticker-add-modal textarea {
+  width: 100%; min-height: 120px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  font-size: 13px;
+  resize: vertical;
+  font-family: inherit;
+}
+.sticker-add-modal .method-tabs {
+  display: flex; gap: 8px; margin-bottom: 12px;
+}
+.sticker-add-modal .method-tab {
+  flex: 1; padding: 6px; text-align: center;
+  border-radius: 8px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text-secondary);
+}
+.sticker-add-modal .method-tab.active {
+  background: #ec4899; color: #fff; border-color: #ec4899;
+}
+
+/* --- 编辑/删除表情包浮层 (层级提升至1200) --- */
+.sticker-edit-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 1200; 
+  display: none;
+  justify-content: center;
+  align-items: center;
+  pointer-events: auto;
+}
+.sticker-edit-overlay.active { display: flex; }
+
+.sticker-edit-modal {
+  width: 85%; max-width: 300px;
+  background: var(--bg, #f4f6fa);
+  border-radius: 20px;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+.sticker-edit-modal h4 {
+  margin: 0 0 16px;
+  font-size: 15px;
+  text-align: center;
+}
+.sticker-edit-modal img {
+  width: 100%; max-height: 180px;
+  object-fit: contain;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background: #f8fafc;
+}
+.sticker-edit-modal .edit-actions {
+  display: flex; gap: 8px; margin-top: 16px;
+}
+.sticker-edit-modal .edit-actions button {
+  flex: 1; padding: 10px; border-radius: 10px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  border: none;
+}
+
+/* --- 对话中的表情包选择栏背景防误触遮罩 --- */
+#sticker-select-backdrop {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 599; /* 略低于选择器面板层级 */
+  background: transparent; /* 完全透明，只充当保护墙 */
+  display: none;
+  pointer-events: auto;
+}
+
+/* --- 对话中的表情包选择栏 (修正 pointer-events 截获与固定滚动边界) --- */
+#sticker-select-overlay {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  z-index: 600; /* 高于遮罩层(599)和对话窗口层级(300) */
+  background: var(--bg, #f4f6fa);
+  border-radius: 20px 20px 0 0;
+  height: 42vh; /* 核心修复：设定固定高度，保障局部弹性滚动得以完美计算触发 */
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+  animation: slideUp 0.25s ease-out;
+  pointer-events: auto; /* 核心修复：强制开启指针截获，防止穿透和页面假死 */
+}
+#sticker-select-overlay.active { display: flex; }
+
+#sticker-select-overlay .sticker-select-body {
+  flex: 1;
+  overflow-y: scroll; /* 核心修复：强制开启滚动条渲染 */
+  -webkit-overflow-scrolling: touch; /* 核心修复：iOS 丝滑物理滚动加速支持 */
+  padding: 10px;
+}
+
+.sticker-select-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.sticker-select-item {
+  background: var(--surface, #fff);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1.5px solid var(--border, #e2e8f0);
+  transition: transform 0.1s;
+}
+.sticker-select-item:active {
+  transform: scale(0.93);
+}
+.sticker-select-item img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  padding: 6px;
+  display: block;
+}
+.sticker-select-item .sticker-sel-caption {
+  padding: 3px 4px;
+  font-size: 9px;
+  text-align: center;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px solid var(--border);
+  background: #fff;
+}
+
+/* --- 对话消息中的表情包渲染 --- */
+.msg-sticker {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 80px;
+  max-height: 60px;
+  border-radius: 4px;
+  margin: 0 2px;
+  cursor: pointer;
+}
+.msg-sticker.big {
+  display: block;
+  max-width: 120px;
+  max-height: 100px;
+  margin: 4px 0;
+}
+
+/* --- 微信原生质感：单张表情包独立悬浮卡片（彻底移除外围底色框） --- */
+.msg-sticker-alone-wrapper {
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+.msg-sticker-alone-wrapper .msg-sticker {
+  max-width: 130px !important;
+  max-height: 130px !important;
+  width: auto !important;
+  height: auto !important;
+  display: block;
+  border-radius: 12px;
+  margin: 0;
+}
+
+/* --- 挂载设置浮层 (z-index 修正) --- */
+#sticker-mount-overlay {
+  z-index: 1200;
+}

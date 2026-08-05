@@ -1,0 +1,107 @@
+/* ========================================== */
+/*             深谈应用专属样式表              */
+/* ========================================== */
+
+/* 二级深谈对话空间 (iOS 滑动滑入式) */
+.deeptalk-room-overlay {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-color: #fafbfc;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.1, 0.9, 0.2, 1);
+  z-index: 600; display: flex; flex-direction: column; pointer-events: none;
+}
+.deeptalk-room-overlay.active { transform: translateX(0); pointer-events: auto; }
+
+/* 简约轻量化卡片滑块结构 (依托原生硬件加速，提供极佳阻尼感) */
+.deeptalk-cards-slider {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory; /* 强制物理翻页对齐 */
+  gap: 16px;
+  padding: 16px;
+  scrollbar-width: none;
+  align-items: center;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch; /* 开启 iOS & 移动浏览器极速惯性阻尼滚动 */
+}
+.deeptalk-cards-slider::-webkit-scrollbar {
+  display: none;
+}
+
+/* 极简温润淡蓝渐变剖析卡片 */
+.deeptalk-card {
+  flex: 0 0 100%; /* 完美占满一页，保证一次翻动一页 */
+  scroll-snap-align: center;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); /* 简约浅蓝 */
+  border-radius: 20px;
+  border: 1.5px solid #bae6fd; /* 淡蓝描边 */
+  box-shadow: 0 10px 30px rgba(186, 230, 253, 0.2);
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  box-sizing: border-box;
+  height: 90%;
+  justify-content: space-between;
+}
+
+.deeptalk-card-q {
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.deeptalk-card-a {
+  flex: 1;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: #1e293b;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  padding-right: 4px;
+}
+
+/* 小宇宙思想卡片样式 */
+.thought-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.thought-content {
+  font-size: 14px;
+  font-style: italic;
+  color: #475569;
+  line-height: 1.6;
+}
+.thought-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* 卡片左右翻页提示符 */
+.deeptalk-indicator-bar {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+.deeptalk-indicator-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background-color: #cbd5e1; transition: background-color 0.2s;
+}
+.deeptalk-indicator-dot.active {
+  background-color: #64748b;
+}

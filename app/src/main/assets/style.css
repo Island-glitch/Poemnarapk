@@ -1,0 +1,171 @@
+:root {
+  --bg-main: #f4f6fa;          /* 高级灰蓝主背景 */
+  --surface: #ffffff;          /* 纯白 */
+  --surface-hover: #f1f5f9;
+  --primary: #1e88e5;          /* 晴空浅蓝色 */
+  --primary-light: #e3f2fd;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --border: #e2e8f0;
+  --danger: #ef4444;
+  --shadow-sm: 0 4px 12px rgba(15,23,42,0.04);
+  --shadow-md: 0 8px 30px rgba(15,23,42,0.06);
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-main);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* 核心修复：自动撑开为全屏模式，并在全面屏设备下自适应安全区域 */
+#phone-container {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg-main);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: none;
+  border-radius: 0;
+  border: none;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+#desktop {
+  flex: 1;
+  padding: 30px 20px 20px 20px;
+  overflow-y: auto;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px 16px;
+  min-height: 200px;
+}
+
+.app-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 72px;
+  cursor: grab;
+  transition: transform 0.15s ease;
+}
+.app-icon:active {
+  cursor: grabbing;
+  transform: scale(0.95);
+}
+.icon-wrapper {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  background-color: var(--surface);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--primary);
+  margin-bottom: 8px;
+  pointer-events: none;
+}
+.icon-wrapper svg {
+  width: 28px;
+  height: 28px;
+}
+.app-icon span {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+}
+
+#dock {
+  padding: 12px 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px;
+}
+.dock-container {
+  background-color: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 28px;
+  height: 78px;
+  /* 统一与 #dock-grid 同源定位：使用 flex+center 让内部网格水平居中 */
+  display: flex;
+  flex-direction: row !important;
+  justify-content: center;
+  align-items: center;
+  /* 给 4 个图标预留固定内容宽度，杜绝容器随屏幕拉伸而偏移 */
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 0 20px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+  body { background-color: var(--bg-main); }
+  #phone-container {
+    max-width: 100%; max-height: 100%; border-radius: 0; border: none;
+  }
+}
+
+/* 桌面翻页指示器样式 */
+#desktop-page-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  height: 24px;
+}
+.page-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(148, 163, 184, 0.4); /* 柔和未选中灰色 */
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.page-dot.active {
+  width: 18px; /* 选中时演变为小长条 */
+  height: 6px;
+  border-radius: 3px;
+  background-color: rgba(71, 85, 105, 0.85); /* 优雅的深石板灰色 */
+}
+.page-add-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #07c160;
+  color: white;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 4px;
+  line-height: 1;
+}

@@ -1,0 +1,879 @@
+/* check_phone.css - 查手机模块专属性冷淡磨砂样式体系 */
+
+/* ==========================================================================
+   1. 基础容器与导航隔离 (Nesting Isolation)
+   ========================================================================= */
+.check-phone-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(20px) saturate(110%);
+  -webkit-backdrop-filter: blur(20px) saturate(110%);
+  z-index: 1005;
+  display: flex;
+  flex-direction: column;
+  animation: checkPhoneFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+@keyframes checkPhoneFadeIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.check-phone-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.check-phone-header {
+  height: 50px;
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+.check-phone-header h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  letter-spacing: 1px;
+}
+
+.btn-icon-check {
+  background: none;
+  border: none;
+  padding: 6px;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s, transform 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-icon-check:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.btn-icon-check.spinning svg {
+  animation: checkPhoneSpin 0.8s linear infinite;
+}
+
+@keyframes checkPhoneSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.check-phone-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==========================================================================
+   2. 桌面与时钟/天气小组件样式 (Desktop Widgets) 
+   ========================================================================== */
+.check-phone-desktop-grid-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.check-phone-widgets {
+  display: flex;
+  gap: 12px;
+  padding: 20px 20px 10px 20px; /* 减少底部外边距使下方应用上移 [10] */
+  box-sizing: border-box;
+}
+
+.widget-clock, .widget-status {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  padding: 22px 14px; /* 增大内补丁以明显提升小组件高度 [10] */
+  min-height: 84px;   /* 设定最小安全高度，使其视觉更饱满 [10] */
+  box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+#phone-widget-time {
+  font-size: 26px;
+  font-weight: 800;
+  color: #1e293b;
+  letter-spacing: 1px;
+  line-height: 1.1;
+}
+
+#phone-widget-date {
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+  margin-top: 4px;
+}
+
+.widget-status-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.widget-status-detail {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.check-phone-desktop-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px 8px; /* 将原先的 20px 14px 缩减至约 0.5 倍间距，让桌面极致紧凑精美 [10] */
+  padding: 10px 24px 24px 24px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.check-phone-app-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  user-select: none;
+}
+
+.app-icon-img-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.01);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  transition: transform 0.2s, background 0.2s;
+  border: 1px solid rgba(255,255,255,0.4);
+}
+
+.check-phone-app-icon:active .app-icon-img-wrapper {
+  transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.app-icon-img-wrapper svg {
+  width: 22px;
+  height: 22px;
+}
+
+.check-phone-app-icon span {
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+}
+
+/* ==========================================================================
+   3. 独立应用视窗屏 (App Screen Glassmorphism)
+   ========================================================================== */
+.check-phone-app-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(248, 250, 252, 0.94);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  animation: appScreenSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+@keyframes appScreenSlideIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.app-screen-header {
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  background: #ffffff;
+}
+
+.app-screen-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: 0.5px;
+}
+
+.app-screen-content {
+  flex: 1;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   4. 通讯应用模块 (Communication App)
+   ========================================================================== */
+.comm-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+  background: #ffffff;
+}
+.comm-list-item:active {
+  background: #f1f5f9;
+}
+.comm-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #cbd5e1;
+  flex-shrink: 0;
+  aspect-ratio: 1 / 1;
+}
+.comm-details {
+  flex: 1;
+  min-width: 0;
+}
+.comm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.comm-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.comm-time {
+  font-size: 10px;
+  color: #94a3b8;
+}
+.comm-msg {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.comm-pinned-badge {
+  font-size: 9px;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+/* 通讯子对话框绝对贴底布局 */
+.comm-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  background: #f8fafc;
+}
+.comm-chat-flow {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  padding-bottom: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+}
+.comm-bubble {
+  display: flex;
+  gap: 10px;
+  max-width: 85%;
+}
+.comm-bubble.self {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+.comm-bubble.other {
+  align-self: flex-start;
+}
+.comm-bubble-text {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.comm-bubble.self .comm-bubble-text {
+  background: #1e293b;
+  color: #ffffff;
+  border-top-right-radius: 2px;
+}
+.comm-bubble.other .comm-bubble-text {
+  background: #ffffff;
+  color: #1e293b;
+  border-top-left-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+.comm-chat-input-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(0,0,0,0.05);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  box-sizing: border-box;
+  z-index: 100;
+}
+.comm-chat-input-bar input {
+  flex: 1;
+  height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 17px;
+  padding: 0 14px;
+  font-size: 12px;
+  outline: none;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+.btn-comm-send {
+  background: #1e293b;
+  border: none;
+  color: #ffffff;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 17px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   5. 相册应用模块 (Album App)
+   ========================================================================== */
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 16px;
+}
+.album-card {
+  background: #ffffff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+.album-svg-placeholder {
+  height: 100px;
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+}
+.album-desc {
+  padding: 10px;
+  font-size: 11px;
+  color: #334155;
+  line-height: 1.4;
+  text-align: justify;
+}
+
+/* ==========================================================================
+   6. 备忘录应用模块 (Notes App)
+   ========================================================================== */
+.notes-search-bar {
+  padding: 8px 16px;
+  background: #ffffff;
+}
+.notes-search-input {
+  width: 100%;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: #f1f5f9;
+  padding: 0 12px;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+.note-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.note-item:active {
+  background: #f8fafc;
+}
+.note-info {
+  flex: 1;
+  min-width: 0;
+}
+.note-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+.note-preview-row {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: #64748b;
+}
+.note-date {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+.note-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   7. 论坛应用模块 (Forum App)
+   ========================================================================== */
+.forum-profile {
+  background: #ffffff;
+  padding: 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.forum-banner {
+  height: 70px;
+  background: #cbd5e1;
+  border-radius: 6px;
+  margin-bottom: -25px;
+}
+.forum-avatar-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+.forum-profile-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 3px solid #ffffff;
+  object-fit: cover;
+  background: #94a3b8;
+  aspect-ratio: 1 / 1;
+}
+.forum-profile-info {
+  margin-top: 8px;
+}
+.forum-profile-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: #1e293b;
+}
+.forum-profile-handle {
+  font-size: 11px;
+  color: #64748b;
+}
+.forum-posts-flow {
+  display: flex;
+  flex-direction: column;
+}
+.forum-post-card {
+  background: #ffffff;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+  cursor: pointer;
+}
+.forum-post-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.forum-post-content {
+  font-size: 12.5px;
+  color: #1e293b;
+  line-height: 1.5;
+  text-align: justify;
+}
+.forum-post-actions {
+  display: flex;
+  gap: 20px;
+  margin-top: 10px;
+  color: #64748b;
+}
+.forum-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+/* ==========================================================================
+   8. 浏览器应用模块与详情页 (Browser App & Details View)
+   ========================================================================== */
+.browser-search-box {
+  padding: 12px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+}
+.browser-search-bar {
+  display: flex;
+  gap: 8px;
+}
+.browser-search-bar input {
+  flex: 1;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  padding: 0 12px;
+  font-size: 12px;
+  outline: none;
+  background: #f8fafc;
+}
+.btn-browser-search {
+  background: #1e293b;
+  border: none;
+  color: #ffffff;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.browser-history-list {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+.browser-history-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.02);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.browser-history-item:active {
+  background: #f8fafc;
+}
+.browser-history-text {
+  font-size: 12.5px;
+  color: #334155;
+  flex: 1;
+}
+
+/* 浏览器网页卡片详情样式 */
+.browser-webpage-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #ffffff;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.browser-webpage-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.browser-webpage-meta {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 8px;
+}
+.browser-webpage-body {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #334155;
+  text-align: justify;
+}
+
+/* ==========================================================================
+   9. 设置应用模块 (Settings App)
+   ========================================================================== */
+.setting-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  padding: 14px 16px 6px 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.setting-row-item {
+  background: #ffffff;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.02);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.setting-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* ==========================================================================
+   10. 遥控器应用模块 (Remote App)
+   ========================================================================== */
+.remote-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 16px;
+}
+.remote-card {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.01);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 90px;
+  box-sizing: border-box;
+}
+.remote-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.remote-device-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.remote-device-state {
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+}
+.remote-card.active .remote-device-state {
+  color: #059669;
+  background: #d1fae5;
+}
+.remote-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.remote-action-btn {
+  flex: 1;
+  border: none;
+  background: #f1f5f9;
+  color: #334155;
+  padding: 6px 0;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+}
+.remote-card.active .remote-action-btn.toggle {
+  background: #1e293b;
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   11. 日记应用模块 (Diary App)
+   ========================================================================== */
+.diary-list {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.diary-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.01);
+  cursor: pointer;
+  border-left: 3px solid #64748b;
+}
+.diary-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed rgba(0,0,0,0.05);
+  padding-bottom: 4px;
+}
+.diary-date {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+}
+.diary-weather {
+  font-size: 10px;
+  color: #94a3b8;
+}
+.diary-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e293b;
+  margin: 6px 0;
+}
+.diary-excerpt {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   12. 购物应用模块 (Shopping App)
+   ========================================================================== */
+.shop-tabs {
+  display: flex;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.shop-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+}
+.shop-tab.active {
+  color: #1e293b;
+  border-bottom: 2px solid #1e293b;
+}
+.cart-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+.cart-item {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.asset-card {
+  background: #1e293b;
+  color: #ffffff;
+  border-radius: 12px;
+  margin: 16px;
+  padding: 20px;
+  text-align: center;
+}
+.asset-label {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.asset-val {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+/* ==========================================================================
+   13. 音乐应用模块 (Music App)
+   ========================================================================== */
+.music-playing-section {
+  background: #1e293b;
+  color: #ffffff;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.music-vinyl-disk {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #334155 30%, #0f172a 100%);
+  border: 6px solid #475569;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+.music-vinyl-disk.spinning {
+  animation: musicSpin 12s linear infinite;
+}
+@keyframes musicSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.music-track-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.music-track-artist {
+  font-size: 11px;
+  color: #94a3b8;
+}

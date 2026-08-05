@@ -1,0 +1,58 @@
+/* desktop_pet.css - 独立多状态悬浮桌宠与仿真气泡样式 */
+#desktop-pet-container {
+  position: fixed;
+  bottom: 120px;
+  right: 20px;
+  width: 100px;
+  height: 100px;
+  z-index: 9999;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-drag: none;
+  transition: transform 0.1s ease;
+  touch-action: none; /* 阻止移动端浏览器手势干扰 */
+}
+#desktop-pet-container:active {
+  cursor: grabbing;
+}
+#desktop-pet-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.pet-bubble {
+  position: absolute;
+  bottom: 105%;
+  right: 0;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  max-width: 160px;
+  word-break: break-all;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.8) translateY(10px);
+  transform-origin: bottom right;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 10000;
+  line-height: 1.4;
+}
+.pet-bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 20px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.95) transparent transparent transparent;
+}
+.pet-bubble.active {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}

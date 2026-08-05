@@ -1,0 +1,577 @@
+/* ==========================================
+   听歌应用 (Music) - 灵动岛卡片翻页聊天与网易云 UI 调性 (终极修写版)
+   设计规范：纯净黑红/极简灰白、全 SVG 矢量图标、零 Emoji
+   ========================================== */
+
+:root {
+  --ncm-red: #ec4141;
+  --ncm-red-dark: #d81e06;
+  --ncm-bg-dark: #121215;
+  --ncm-card-dark: #1f1f24;
+  --ncm-text-main: #1f2937;
+  --ncm-text-sub: #6b7280;
+  --ncm-border: #e5e7eb;
+}
+
+/* 1. 网页全局最高层级悬浮灵动岛 (强行绝对定位脱离文档流，绝对不压迫任何页面) */
+#dynamic-island-container {
+  display: none; /* 初始默认隐藏 */
+  position: absolute !important;
+  top: 10px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 99999 !important;
+  background: rgba(18, 18, 21, 0.95);
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.5);
+  transition: width 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275), height 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275), border-radius 0.35s ease;
+  overflow: hidden !important;
+  user-select: none;
+  -webkit-user-select: none;
+  box-sizing: border-box !important;
+  color: #ffffff;
+  pointer-events: auto !important;
+}
+
+/* 灵动岛 - 收起胶囊态 */
+#dynamic-island-container.collapsed {
+  width: 200px !important;
+  height: 38px !important;
+  border-radius: 20px !important;
+  padding: 5px 12px !important;
+  cursor: pointer;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* 核心隔离：收起模式下强行隐藏所有大卡片内容，防止任何元素溢出 */
+#dynamic-island-container.collapsed #island-player-view,
+#dynamic-island-container.collapsed #island-chat-view {
+  display: none !important;
+}
+
+/* 展开模式下隐藏收起胶囊视图 */
+#dynamic-island-container.expanded .island-mini-content {
+  display: none !important;
+}
+
+/* 灵动岛 - 展开 310x340px 大听歌卡片 */
+#dynamic-island-container.expanded {
+  width: 310px !important;
+  height: 340px !important;
+  border-radius: 24px !important;
+  padding: 14px !important;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  background: rgba(18, 18, 21, 0.88);
+}
+
+.island-card-bg-blur {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(25px) brightness(0.45);
+  opacity: 0.6;
+  z-index: -1;
+  pointer-events: none;
+  transition: background-image 0.5s ease;
+}
+
+.island-mini-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.island-cover-sm {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  animation: vinylRotate 8s linear infinite paused;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.island-cover-sm.playing {
+  animation-play-state: running;
+}
+
+@keyframes vinylRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.island-text-box-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.island-title-sm {
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.island-artist-sm {
+  font-size: 9.5px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.island-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.island-card-title-box {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.island-card-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.island-card-artist {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.island-card-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.island-card-center-stage {
+  width: 100%;
+  height: 125px;
+  margin: 2px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.island-card-vinyl-box {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.island-card-vinyl {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(42,42,48,0.7) 0%, rgba(17,17,20,0.6) 70%, rgba(0,0,0,0.8) 100%);
+  border: 3.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 25px rgba(236, 65, 65, 0.25), inset 0 0 15px rgba(255,255,255,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: vinylRotate 10s linear infinite paused;
+}
+
+.island-card-vinyl.playing {
+  animation-play-state: running;
+}
+
+.island-card-cover {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.2);
+}
+
+.island-card-lyrics-box {
+  width: 100%;
+  height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  box-sizing: border-box;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+}
+
+.island-lyric-line {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 600;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.island-lyric-line.active {
+  font-size: 13.5px;
+  color: #ffffff;
+  font-weight: 800;
+  text-shadow: 0 0 8px rgba(236, 65, 65, 0.8);
+}
+
+.island-seekbar-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.island-seekbar-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 700;
+}
+
+.island-seekbar {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.island-seekbar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ncm-red);
+}
+
+.island-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  width: 100%;
+}
+
+.island-companion-pill {
+  width: 100%;
+  height: 36px;
+  background: rgba(236, 65, 65, 0.18);
+  border: 1px solid rgba(236, 65, 65, 0.45);
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.island-companion-pill:active {
+  background: rgba(236, 65, 65, 0.35);
+}
+
+/* 卡片内嵌套翻页聊天室视图样式 */
+.island-chat-flow {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+  max-height: 220px;
+}
+
+.island-chat-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.island-chat-input {
+  flex: 1;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 16px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  color: #ffffff;
+  outline: none;
+}
+
+.island-chat-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.island-chat-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 网易云应用主窗口 */
+#win-music {
+  background-color: #fcfcfd;
+  display: flex;
+  flex-direction: column;
+}
+
+.music-header {
+  height: 50px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--ncm-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  flex-shrink: 0;
+}
+
+.music-header-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ncm-text-main);
+  letter-spacing: 0.5px;
+}
+
+.music-body-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+}
+
+.music-tab-panel {
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.music-tab-panel.active {
+  display: flex;
+}
+
+.ncm-section-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ncm-text-main);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.ncm-playlist-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  background: #ffffff;
+  border: 1px solid var(--ncm-border);
+  padding: 8px;
+  border-radius: 12px;
+}
+
+.ncm-playlist-cover {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f1f5f9;
+}
+
+.ncm-playlist-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ncm-text-main);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ncm-search-bar {
+  width: 100%;
+  height: 40px;
+  background: #f1f5f9;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.ncm-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ncm-text-main);
+}
+
+.ncm-song-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid var(--ncm-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  gap: 8px;
+}
+
+.ncm-song-item:active {
+  background: #f8fafc;
+}
+
+.ncm-song-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.ncm-song-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ncm-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ncm-vip-tag {
+  font-size: 9px;
+  font-weight: 800;
+  color: #ec4141;
+  border: 1px solid #fca5a5;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #fef2f2;
+  flex-shrink: 0;
+}
+
+.ncm-song-artist {
+  font-size: 11px;
+  color: var(--ncm-text-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ncm-song-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ncm-user-profile-card {
+  background: #ffffff;
+  border: 1px solid var(--ncm-border);
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.ncm-user-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--ncm-red);
+}
+
+.music-dock {
+  height: 54px;
+  background: #ffffff;
+  border-top: 1px solid var(--ncm-border);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.music-dock-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.music-dock-tab.active {
+  color: var(--ncm-red);
+}
+
+.music-dock-tab span {
+  font-size: 10px;
+  font-weight: 700;
+}
