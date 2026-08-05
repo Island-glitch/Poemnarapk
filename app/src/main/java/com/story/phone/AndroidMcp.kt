@@ -1069,9 +1069,11 @@ class AndroidMcp(private val context: Context) {
     // ============================================================
 
     // 本地 ONNX 向量模型的下载源（all-MiniLM-L6-v2 量化版，384 维）
-    // 模型托管在 GitHub Releases，国内可稳定访问（HuggingFace 国内常被墙）
-    private val MODEL_DOWNLOAD_URL = "https://github.com/Island-glitch/Xvshishiapk/releases/download/vector-model-v1/model_quantized.onnx"
-    // 词表暂用 HuggingFace 镜像，下载失败不影响推理（降级哈希分词）
+    // ★ 开源版说明：模型与词表均直接引用 HuggingFace 官方仓库 sentence-transformers/all-MiniLM-L6-v2
+    //   本项目不托管、不分发该模型，下载与可用性由上游官方仓库负责，与本项目作者无关。
+    //   如遇 HuggingFace 访问受限，请自行配置网络代理或更换为可访问的官方镜像。
+    private val MODEL_DOWNLOAD_URL = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model_quantized.onnx"
+    // 词表同样使用 HuggingFace 官方地址，下载失败不影响推理（降级哈希分词）
     private val VOCAB_DOWNLOAD_URL = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/vocab.txt"
     private val LOCAL_MODEL_FILENAME = "model_quantized.onnx"
     private val LOCAL_VOCAB_FILENAME = "vocab.txt"

@@ -47,7 +47,6 @@ const ASSETS = [
   './images/widget_polaroid_photo.jpg',
   './images/avatar_char1.jpg',
   './images/avatar_char2.jpg',
-  './icon-144.png',
   './icon-512.png',
   'https://unpkg.com/dexie@4.0.1/dist/dexie.js'
 ];
