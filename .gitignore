@@ -1,0 +1,40 @@
+# Gradle / Android build outputs
+.gradle/
+build/
+app/build/
+captures/
+*.apk
+*.aab
+*.dex
+*.class
+
+# Local SDK / IDE configuration
+local.properties
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# Signing keys other than the bundled example
+*.jks
+*.keystore
+!app/storyphone.jks
+
+# Development and editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.bak
+*.log
+*.tmp
+*.swp
+*~
+
+# Local developer tooling and private notes
+.workbuddy/
+tools/
+node_modules/
+.env
+.env.*
