@@ -15,6 +15,7 @@
     mountedCompanion: null,
     ncmCookie: localStorage.getItem("ncm_user_cookie") || "",
     ncmApiBase: localStorage.getItem("ncm_api_base") || "http://localhost:3000",
+    ncmUid: localStorage.getItem("ncm_uid") || "",
     ncmAnonCookie: "", // 匿名注册获取的设备 cookie，用于绕过登录风控
     ncmCaptchaCooldown: 0,
     isVip: false,
@@ -23,6 +24,59 @@
     tempCropCoverBase64: "",
     unikey: "",
     qrPollTimer: null,
+    searchResultSongs: [], // 网易云在线搜索结果（搜索页点播专用，不写入 IndexedDB）
+    _searchPlayMode: false, // 标记当前播放列表是否处于"搜索结果"模式
+    pendingLocalMusicFiles: [], // onchange 时缓存的待导入本地音频（规避部分 WebView 点击保存按钮时 input.files 丢失）
+
+    /**
+     * 统一网易云 API 请求（核心修复）：
+     * NeteaseCloudMusicApi 在业务失败时（验证码错误/风控等）返回 HTTP 503 + body code 503，
+     * 若用 res.ok（HTTP 200）判断会把业务失败误判为"API 连接失败"。
+     * 这里统一解析 body，以 body.code === 200 判定业务成功。
+     */
+    async ncmRequest(url) {
+      let res = null;
+      // APK 内优先走原生壳（绕过 CORS / 混合内容限制，能直连 Termux localhost）
+      if (window.AndroidMCP && typeof window.AndroidMCP.sendNativeHttpRequest === 'function') {
+        try {
+          const resStr = window.AndroidMCP.sendNativeHttpRequest(url, "GET", "{}", "");
+          const resObj = JSON.parse(resStr);
+          if (resObj.status === 500 && resObj.body) {
+            // 原生壳请求失败时回退到 fetch（例如本地服务未启动）
+            return null;
+          }
+          let bodyData = null;
+          try {
+            bodyData = typeof resObj.body === 'string' ? JSON.parse(resObj.body) : resObj.body;
+          } catch(e) {
+            bodyData = resObj.body;
+          }
+          return bodyData;
+        } catch(e) {
+          return null;
+        }
+      }
+      // 网页版降级 fetch（若配置了本地 CORS 中转 3001 则优先走中转）
+      try {
+        const proxyBase = localStorage.getItem("ncm_cors_proxy") || "";
+        const finalUrl = (proxyBase && url.indexOf("localhost") === -1)
+          ? proxyBase + "/proxy?url=" + encodeURIComponent(url)
+          : url;
+        res = await fetch(finalUrl).catch(() => null);
+      } catch(e) { return null; }
+      if (!res) return null;
+      try { return await res.json(); } catch(e) { return null; }
+    },
+
+    /** 从网易云响应提取完整 cookie（兼容字符串 / 数组两种格式） */
+    extractNcmCookie(cookieField) {
+      if (!cookieField) return "";
+      if (typeof cookieField === 'string') return cookieField;
+      if (Array.isArray(cookieField)) {
+        return cookieField.map(c => c.split(';')[0]).join('; ');
+      }
+      return "";
+    },
 
     async init() {
       this.bindAudioEvents();
@@ -30,6 +84,11 @@
       await this.loadPlaylistsFromStorage();
       this.renderMine();
       this.updateIslandCompanionUI();
+      // 恢复登录态：已有 Cookie 则自动回填用户信息与红心歌单（无需再次登录）
+      if (this.ncmCookie && !localStorage.getItem("ncm_session_restored")) {
+        localStorage.setItem("ncm_session_restored", "1");
+        this.syncNcmUserData(this.ncmCookie).catch(function () {});
+      }
     },
 
     cleanCotText(text) {
@@ -581,6 +640,9 @@
       if (targetTab) targetTab.classList.add("active");
 
       if (tab === 'mine') this.renderMine();
+      if (tab === 'search') {
+        this._searchPlayMode = false; // 切到搜索页时退出搜索结果播放模式标记
+      }
     },
 
     openImportChoiceModal() {
@@ -598,6 +660,11 @@
       const overlay = document.getElementById("ncm-import-form-overlay");
       if (!overlay) return;
 
+      // 重置上次残留的文件缓存与文件输入，避免误用旧选择
+      this.pendingLocalMusicFiles = [];
+      const fileInput = document.getElementById("ncm-form-file-input");
+      if (fileInput) fileInput.value = "";
+
       document.getElementById("ncm-form-import-type").value = type;
       const fileGroup = document.getElementById("ncm-form-file-group");
       const urlGroup = document.getElementById("ncm-form-url-group");
@@ -614,6 +681,10 @@
     closeImportFormModal() {
       const overlay = document.getElementById("ncm-import-form-overlay");
       if (overlay) overlay.classList.remove("active");
+      // 关闭时清理文件缓存，避免下次打开误用
+      this.pendingLocalMusicFiles = [];
+      const fileInput = document.getElementById("ncm-form-file-input");
+      if (fileInput) fileInput.value = "";
     },
 
     populatePlaylistDropdownOptions(selectId) {
@@ -692,11 +763,20 @@
 
       if (type === 'local') {
         const fileInput = document.getElementById("ncm-form-file-input");
-        if (!fileInput.files || !fileInput.files[0]) {
+        // 优先使用 onchange 缓存的文件，规避部分 WebView 点击保存按钮瞬间 input.files 被清空导致"没有选择文件"
+        let files = (this.pendingLocalMusicFiles && this.pendingLocalMusicFiles.length > 0)
+          ? this.pendingLocalMusicFiles
+          : (fileInput && fileInput.files ? Array.from(fileInput.files) : []);
+        if (files.length === 0) {
           if (typeof showToast === 'function') showToast("请先选择本地音频文件");
           return;
         }
-        const file = fileInput.files[0];
+        // 多选批量导入：以文件名作为歌名自动导入
+        if (files.length > 1) {
+          await this.batchImportLocalFiles(files, targetPlId);
+          return;
+        }
+        const file = files[0];
         songObj.title = titleInput || file.name.replace(/\.[^/.]+$/, "");
         songObj.url = URL.createObjectURL(file);
         await this.saveSongToIndexedDB({ id: songObj.id, blob: file, ...songObj });
@@ -750,6 +830,84 @@
       if (typeof showToast === 'function') showToast("歌曲全自动识别并录入成功！");
       this.closeImportFormModal();
       this.renderMine();
+    },
+
+    // 文件选择后预览：单选自动填歌名，多选显示数量提示
+    previewLocalFileCount() {
+      const fileInput = document.getElementById("ncm-form-file-input");
+      const hint = document.getElementById("ncm-form-file-hint");
+      if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
+
+      // 缓存选中文件：部分 Android WebView 在用户点击"保存"按钮时 input.files 已被清空，
+      // 此处于 onchange（文件刚选完、必定可用时）留底，提交时优先读取该缓存。
+      this.pendingLocalMusicFiles = Array.from(fileInput.files);
+
+      const titleInput = document.getElementById("ncm-form-title");
+      if (fileInput.files.length > 1) {
+        if (hint) hint.textContent = `已选择 ${fileInput.files.length} 个文件，将以文件名作为歌名批量导入（下方歌名/歌手等字段将被忽略）。`;
+        if (titleInput) { titleInput.value = ""; titleInput.placeholder = `批量导入 ${fileInput.files.length} 首（使用各文件名）`; }
+      } else {
+        if (hint) hint.textContent = "选择多个文件时，将以文件名作为歌名批量导入。";
+        if (titleInput && !titleInput.value) {
+          titleInput.value = fileInput.files[0].name.replace(/\.[^/.]+$/, "");
+        }
+      }
+    },
+
+    // 批量导入多个本地音频文件（以文件名作为歌名）
+    async batchImportLocalFiles(files, targetPlId) {
+      const fileList = Array.from(files);
+      if (typeof showToast === 'function') showToast(`正在批量导入 ${fileList.length} 首歌曲…`);
+
+      let successCount = 0;
+      let failCount = 0;
+      const baseTime = Date.now();
+
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        try {
+          const songId = "song_" + baseTime + "_" + i;
+          const title = file.name.replace(/\.[^/.]+$/, "").trim() || "未命名歌曲";
+          const songObj = {
+            id: songId,
+            title: title,
+            artist: "未知歌手",
+            cover: "",
+            lyrics: "[00:00.00]暂无歌词",
+            url: URL.createObjectURL(file),
+            isVip: false,
+            isFavorite: false
+          };
+          await this.saveSongToIndexedDB({ id: songId, blob: file, ...songObj });
+
+          if (targetPlId && this.playlists.length > 0) {
+            const targetPl = this.playlists.find(p => p.id === targetPlId);
+            if (targetPl) {
+              targetPl.songIds = targetPl.songIds || [];
+              if (!targetPl.songIds.includes(songId)) {
+                targetPl.songIds.push(songId);
+              }
+            }
+          }
+          successCount++;
+        } catch (err) {
+          failCount++;
+        }
+      }
+
+      if (targetPlId) this.savePlaylistsToStorage();
+      this.tempCropCoverBase64 = "";
+
+      const fileInput = document.getElementById("ncm-form-file-input");
+      if (fileInput) fileInput.value = "";
+      this.pendingLocalMusicFiles = [];
+
+      this.closeImportFormModal();
+      this.renderMine();
+
+      if (typeof showToast === 'function') {
+        showToast(`批量导入完成：成功 ${successCount} 首` + (failCount > 0 ? `，失败 ${failCount} 首` : ""));
+      }
     },
 
     // 双通道并发高成功率网易云歌词与元数据识别器
@@ -914,6 +1072,7 @@
         } catch(e) {}
       }
 
+      this.renderNcmSyncBar();
       await this.renderPlaylistsUI();
       await this.renderSongsUI();
     },
@@ -925,6 +1084,142 @@
         if (firstSong && firstSong.cover) return firstSong.cover;
       }
       return "";
+    },
+
+    // ============ 网易云一键全量同步条 ============
+    renderNcmSyncBar() {
+      const container = document.getElementById("ncm-sync-bar");
+      if (!container) return;
+      const hasCookie = !!this.ncmCookie;
+      const ncmNick = localStorage.getItem("ncm_user_nickname") || "";
+      const syncedKey = localStorage.getItem("ncm_synced_playlists") === "1";
+      let html = `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-radius:12px; background:${hasCookie ? "#f0fdf4" : "#fef2f2"}; border:1px solid ${hasCookie ? "#bbf7d0" : "#fecaca"}; margin-bottom:12px;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:12px; font-weight:800; color:var(--text-primary);">网易云一键同步</div>
+            <div style="font-size:10px; color:var(--text-secondary); line-height:1.5; margin-top:2px;">
+              ${hasCookie ? (ncmNick ? `已登录 ${ncmNick}，可一键拉取歌单 / 红心收藏 / 听歌记录` : "已登录，可一键拉取歌单 / 红心收藏 / 听歌记录") : "未登录，先完成网易云登录后再同步"}
+            </div>
+          </div>
+          <button class="btn btn-primary" style="padding:7px 12px; font-size:11px; flex-shrink:0; ${hasCookie ? "" : "opacity:0.5; pointer-events:none;"}" onclick="musicSystem.syncAllNcmData()">${syncedKey ? "重新同步" : "一键同步"}</button>
+        </div>
+      `;
+      container.innerHTML = html;
+    },
+
+    // 一键同步：歌单 + 红心收藏 + 听歌记录
+    async syncAllNcmData() {
+      if (!this.ncmCookie) {
+        if (typeof showToast === 'function') showToast("请先完成网易云登录");
+        return;
+      }
+      if (typeof showToast === 'function') showToast("开始同步网易云数据…");
+
+      // 1. 拉取用户歌单列表（复用 ncmApiBase 接口）
+      let playlistsData = null;
+      try {
+        const res = await this.ncmRequest(`${this.ncmApiBase}/user/playlist?uid=${this.ncmUid || ""}`);
+        if (res && res.code === 200 && res.playlist) playlistsData = res;
+      } catch(e) {}
+
+      // 需要 UID：优先从登录信息里读
+      if (!this.ncmUid) {
+        try {
+          const profileRes = await this.ncmRequest(`${this.ncmApiBase}/user/account?cookie=${encodeURIComponent(this.ncmCookie)}`);
+          if (profileRes && profileRes.code === 200 && profileRes.profile) {
+            this.ncmUid = profileRes.profile.userId;
+            localStorage.setItem("ncm_uid", String(this.ncmUid));
+          }
+        } catch(e) {}
+      }
+
+      // 2. 拉取红心收藏（likeList）：user/playlist 返回的第一个通常就是红心歌单
+      let likedIds = [];
+      try {
+        if (playlistsData && playlistsData.playlist && playlistsData.playlist[0]) {
+          const likedPl = playlistsData.playlist[0];
+          const likeRes = await this.ncmRequest(`${this.ncmApiBase}/playlist/track/all?id=${likedPl.id}&limit=1000`);
+          if (likeRes && likeRes.code === 200 && likeRes.songs) {
+            likedIds = likeRes.songs.map(s => s.id);
+          }
+        }
+      } catch(e) {}
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // 3. 合并：用户歌单 + 红心收藏（红心放入专属歌单）
+      if (playlistsData && Array.isArray(playlistsData.playlist)) {
+        for (const plInfo of playlistsData.playlist) {
+          try {
+            const detail = await this.fetchNcmPlaylistDetail(plInfo.id);
+            if (detail && detail.tracks && detail.tracks.length > 0) {
+              const newPl = {
+                id: "pl_ncm_" + plInfo.id,
+                name: plInfo.name || "网易云歌单",
+                coverUrl: detail.coverUrl || plInfo.coverImgUrl || "",
+                songIds: []
+              };
+              for (const track of detail.tracks) {
+                const songId = "ncm_" + track.id;
+                const songObj = {
+                  id: songId,
+                  title: track.name,
+                  artist: track.artist || "网易云歌手",
+                  cover: track.cover || newPl.coverUrl || "",
+                  url: `https://music.163.com/song/media/outer/url?id=${track.id}.mp3`,
+                  lyrics: "[00:00.00]点击播放拉取歌词",
+                  isVip: track.fee === 1,
+                  isFavorite: false
+                };
+                await this.saveSongToIndexedDB(songObj);
+                if (!newPl.songIds.includes(songId)) newPl.songIds.push(songId);
+                successCount++;
+              }
+              const existingIdx = this.playlists.findIndex(p => p.id === newPl.id);
+              if (existingIdx !== -1) this.playlists[existingIdx] = newPl;
+              else this.playlists.push(newPl);
+            }
+          } catch(e) { failCount++; }
+        }
+      }
+
+      // 4. 红心收藏歌单（id: ncm_liked）
+      if (likedIds.length > 0) {
+        const likedPl = {
+          id: "ncm_liked",
+          name: "❤ 我的红心收藏",
+          coverUrl: "",
+          songIds: []
+        };
+        for (const sid of likedIds) {
+          try {
+            const meta = await this.fetchNcmSongDetail(sid).catch(() => null);
+            const songId = "ncm_" + sid;
+            const songObj = {
+              id: songId,
+              title: meta && meta.title ? meta.title : "歌曲 " + sid,
+              artist: meta && meta.artist ? meta.artist : "网易云歌手",
+              cover: meta && meta.cover ? meta.cover : "",
+              url: `https://music.163.com/song/media/outer/url?id=${sid}.mp3`,
+              lyrics: meta && meta.lyrics ? meta.lyrics : "[00:00.00]暂无歌词",
+              isVip: false,
+              isFavorite: true
+            };
+            await this.saveSongToIndexedDB(songObj);
+            if (!likedPl.songIds.includes(songId)) likedPl.songIds.push(songId);
+            successCount++;
+          } catch(e) { failCount++; }
+        }
+        const likedIdx = this.playlists.findIndex(p => p.id === "ncm_liked");
+        if (likedIdx !== -1) this.playlists[likedIdx] = likedPl;
+        else this.playlists.push(likedPl);
+      }
+
+      await this.savePlaylistsToStorage();
+      localStorage.setItem("ncm_synced_playlists", "1");
+      if (typeof showToast === 'function') showToast(`同步完成！共 ${successCount} 首${failCount > 0 ? `，失败 ${failCount} 首` : ""}`);
+      this.renderMine();
     },
 
     async renderPlaylistsUI() {
@@ -1025,19 +1320,122 @@
     // 核心重构：0.01 秒极速唤起灵动岛播放 + 非阻塞后台异步静默补拉歌词！
     // 带有【多通道音源自愈熔断】与【自适应备用切换】的极速播放器
     // 若 currentPlaylistId 已设置，则播放范围限定为该歌单内的歌曲（顺序/循环/随机只在此歌单里）
+    // ============================================================
+    //  VIP 全曲解析（v1.5.20）
+    //
+    //  以前音源一律是 `https://music.163.com/song/media/outer/url?id=xxx.mp3`，
+    //  这条匿名的公开地址对 VIP 歌曲只会返回 30 秒试听（部分甚至直接 404），
+    //  所以即便登录了黑胶账号也只能听 30 秒。
+    //
+    //  现在改为：把登录 Cookie 交给本地网易云 API（NeteaseCloudMusicApi :3000）的
+    //  /song/url/v1 取真实播放地址 —— 服务端会带着你的会员身份签发带鉴权的 CDN 链接，
+    //  VIP 歌曲即可整首播放。取不到（没装本地服务/未登录/版权受限）时，
+    //  原样回落到旧的公开地址，行为与改动前一致。
+    // ============================================================
+    ncmCookieHeader() {
+      const parts = [];
+      if (this.ncmCookie) parts.push(this.ncmCookie);
+      if (this.ncmAnonCookie && String(this.ncmAnonCookie) !== String(this.ncmCookie || '')) {
+        parts.push(this.ncmAnonCookie);
+      }
+      return parts.filter(Boolean).join('; ');
+    },
+
+    // 带 Cookie 请求本地 API（ncmRequest 不带 Cookie，登录态接口不能用它）
+    async ncmRequestWithCookie(pathOrUrl, method = 'GET', bodyStr = '') {
+      const cookie = this.ncmCookieHeader();
+      const base = this.ncmApiBase || 'http://localhost:3000';
+      const url = pathOrUrl.indexOf('http') === 0 ? pathOrUrl : (base + pathOrUrl);
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+        'Referer': 'https://music.163.com/',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      };
+      if (cookie) headers['Cookie'] = cookie;
+      try {
+        if (window.AndroidMCP && typeof window.AndroidMCP.sendNativeHttpRequest === 'function') {
+          const resStr = window.AndroidMCP.sendNativeHttpRequest(url, method, JSON.stringify(headers), bodyStr);
+          const resObj = JSON.parse(resStr);
+          if (resObj.status === 500) return null;
+          let body = null;
+          try { body = typeof resObj.body === 'string' ? JSON.parse(resObj.body) : resObj.body; } catch (e) { body = resObj.body; }
+          return body;
+        }
+        const res = await fetch(url, { method, headers, body: method === 'POST' ? bodyStr : undefined });
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (e) {
+        return null;
+      }
+    },
+
+    // 解析一首歌的真实播放地址；失败返回 null
+    async resolveNcmFullUrl(songId, opts) {
+      const id = String(songId || '').replace(/^ncm_/, '');
+      if (!id) return null;
+      const cookie = this.ncmCookieHeader();
+      // 没登录也能试一次匿名（个别曲目匿名即完整），但优先用登录态
+      const levels = (opts && opts.levels) || ['exhigh', 'lossless', 'higher', 'standard'];
+      const qs = (level) =>
+        `/song/url/v1?id=${encodeURIComponent(id)}&level=${level}` +
+        (cookie ? `&cookie=${encodeURIComponent(cookie)}` : '') +
+        `&timestamp=${Date.now()}`;
+
+      for (const level of levels) {
+        try {
+          const data = await this.ncmRequestWithCookie(qs(level));
+          const item = data && data.data && data.data[0];
+          const url = item && item.url;
+          // freeTrialInfo 不为空 = 仍然只是试听片段；试听片段也要（好过没有），但记日志
+          if (url) {
+            const isTrial = !!(item.freeTrialInfo);
+            this._lastResolveInfo = { id, level, isTrial, br: item.br, size: item.size };
+            console.log(`[NCM] 已解析播放地址 id=${id} level=${level} 试听片段=${isTrial} 码率=${item.br || '-'} code=${data.code}`);
+            return url;
+          }
+        } catch (e) { /* 换下一档 */ }
+      }
+      this._lastResolveInfo = { id, level: null, isTrial: null };
+      console.log(`[NCM] 未能解析完整播放地址 id=${id}（无本地 API / 未登录 / 版权受限），回落到公开试听地址`);
+      return null;
+    },
+
+    // 播放前尝试把公开试听地址换成完整地址（拿不到就保持原样，零风险）
+    async upgradeNcmPlayUrl(song) {
+      try {
+        if (!song || !song.id || String(song.id).indexOf('ncm_') !== 0) return;
+        if (!this.ncmApiBase) return;
+        // 本地曲（用户自己上传的 blob）不处理
+        if (song.blob instanceof Blob) return;
+        const full = await this.resolveNcmFullUrl(song.id);
+        if (full) {
+          song.url = full;
+          song._fullUrl = true;
+        }
+      } catch (e) {
+        console.warn('[NCM] 试听地址升级失败，沿用原地址', e);
+      }
+    },
+
     async playSongFromList(index) {
       let songs;
-      if (this.currentPlaylistId) {
-        // 歌单范围：只取该歌单的 songIds 对应歌曲，保持歌单内顺序
-        const allSongs = await this.getAllSongsFromIndexedDB();
-        const pl = this.playlists.find(p => p.id === this.currentPlaylistId);
-        if (pl && pl.songIds && pl.songIds.length > 0) {
-          songs = (pl.songIds || []).map(sid => allSongs.find(s => s.id === sid)).filter(Boolean);
-        } else {
-          songs = allSongs;
-        }
+      // 搜索页点播：在线搜索歌曲（未持久化到曲库）直接在当前搜索结果列表中播放，不污染"我的"曲库
+      if (this.searchResultSongs && this.searchResultSongs.length > 0 && index < this.searchResultSongs.length && this._searchPlayMode) {
+        songs = this.searchResultSongs;
       } else {
-        songs = await this.getAllSongsFromIndexedDB();
+        this._searchPlayMode = false;
+        if (this.currentPlaylistId) {
+          // 歌单范围：只取该歌单的 songIds 对应歌曲，保持歌单内顺序
+          const allSongs = await this.getAllSongsFromIndexedDB();
+          const pl = this.playlists.find(p => p.id === this.currentPlaylistId);
+          if (pl && pl.songIds && pl.songIds.length > 0) {
+            songs = (pl.songIds || []).map(sid => allSongs.find(s => s.id === sid)).filter(Boolean);
+          } else {
+            songs = allSongs;
+          }
+        } else {
+          songs = await this.getAllSongsFromIndexedDB();
+        }
       }
       if (!songs[index]) return;
 
@@ -1047,6 +1445,9 @@
 
       // 重置音频错误自愈监听
       this.audio.onerror = null;
+
+      // VIP 全曲：播放前把公开试听地址换成带会员鉴权的完整地址（可失败，失败即沿用原地址）
+      await this.upgradeNcmPlayUrl(song);
 
       if (song.blob instanceof Blob) {
         this.audio.src = URL.createObjectURL(song.blob);
@@ -1059,6 +1460,17 @@
         console.warn("主音源加载失败或触发限流，启动备用音源通道...");
         if (song.id && song.id.startsWith("ncm_")) {
           const rawId = song.id.replace("ncm_", "");
+          // 备用 1：本地 API 再解析一次（换一档音质）
+          try {
+            const retry = await this.resolveNcmFullUrl(rawId, { levels: ['standard', 'higher'] });
+            if (retry) {
+              this.audio.onerror = () => { if (typeof showToast === 'function') showToast("该曲目音源失效，已自动播放下一首"); this.nextSong(); };
+              this.audio.src = retry;
+              this.audio.play().catch(() => this.nextSong());
+              return;
+            }
+          } catch (e) {}
+          // 备用 2：公开第三方通道
           const backupUrl = `https://api.i-meto.com/meting/v1/url?id=${rawId}`;
           this.audio.onerror = () => {
             if (typeof showToast === 'function') showToast("该曲目版权受限或音源失效，已自动播放下一首");
@@ -1424,24 +1836,21 @@
       await this.checkNcmApiConnectivity();
     },
 
-    // 检测 API 后端是否可用
+    // 检测 API 后端是否可用（按 body code 判断，不依赖 HTTP 状态码）
     async checkNcmApiConnectivity() {
       const statusEl = document.getElementById("ncm-api-status");
       if (statusEl) statusEl.innerText = "检测中...";
       try {
-        const res = await fetch(`${this.ncmApiBase}/search?keywords=test&limit=1`).catch(() => null);
-        if (res && res.ok) {
-          const data = await res.json();
-          if (data && data.code === 200) {
-            if (statusEl) {
-              statusEl.innerText = "✓ API 连通正常";
-              statusEl.style.color = "#22c55e";
-            }
-            return true;
+        const data = await this.ncmRequest(`${this.ncmApiBase}/search?keywords=test&limit=1`);
+        if (data && data.code === 200) {
+          if (statusEl) {
+            statusEl.innerText = "✓ API 连通正常";
+            statusEl.style.color = "#22c55e";
           }
+          return true;
         }
         if (statusEl) {
-          statusEl.innerText = "✗ API 返回异常，请检查地址";
+          statusEl.innerText = "✗ API 返回异常，请检查地址" + (data && data.message ? "：" + data.message : "");
           statusEl.style.color = "#ef4444";
         }
       } catch(e) {
@@ -1470,14 +1879,10 @@
         // 先匿名注册获取设备 cookie（绕过风控的关键步骤）
         if (!this.ncmAnonCookie) {
           if (statusText) statusText.innerText = "正在建立设备通道...";
-          const anonRes = await fetch(`${this.ncmApiBase}/register/anonimous`).catch(() => null);
-          if (anonRes && anonRes.ok) {
-            const anonData = await anonRes.json();
-            // 从响应头 Set-Cookie 中提取 cookie（浏览器 fetch 可能无法读取 Set-Cookie，
-            // NeteaseCloudMusicApi 会把 cookie 数组放在响应体里）
-            if (anonData.cookie && Array.isArray(anonData.cookie)) {
-              this.ncmAnonCookie = anonData.cookie.map(c => c.split(';')[0]).join('; ');
-            }
+          const anonData = await this.ncmRequest(`${this.ncmApiBase}/register/anonimous`);
+          if (anonData && anonData.code === 200 && anonData.cookie) {
+            // 兼容 cookie 为字符串（新版 API）或数组（旧版 API）
+            this.ncmAnonCookie = this.extractNcmCookie(anonData.cookie);
           }
           if (!this.ncmAnonCookie) {
             // 即使匿名注册失败也继续，部分情况下仍可发送验证码
@@ -1485,37 +1890,32 @@
           }
         }
 
-        // 发送验证码
+        // 发送验证码（按 body code 判断，业务失败时 HTTP 可能 503）
         if (statusText) statusText.innerText = "正在发送验证码...";
         const captchaUrl = `${this.ncmApiBase}/captcha/sent?phone=${phone}` + (this.ncmAnonCookie ? `&cookie=${encodeURIComponent(this.ncmAnonCookie)}` : "");
-        const res = await fetch(captchaUrl).catch(() => null);
+        const data = await this.ncmRequest(captchaUrl);
 
-        if (res && res.ok) {
-          const data = await res.json();
-          if (data.code === 200) {
-            if (statusText) statusText.innerText = "验证码已发送至手机，请查收";
-            if (typeof showToast === 'function') showToast("验证码已发送！");
-            // 开始倒计时
-            this.ncmCaptchaCooldown = 60;
-            this.captchaCooldownTimer = setInterval(() => {
-              this.ncmCaptchaCooldown--;
-              if (sendBtn) {
-                if (this.ncmCaptchaCooldown > 0) {
-                  sendBtn.innerText = `${this.ncmCaptchaCooldown}s`;
-                  sendBtn.disabled = true;
-                } else {
-                  sendBtn.innerText = "重新发送";
-                  sendBtn.disabled = false;
-                  clearInterval(this.captchaCooldownTimer);
-                }
+        if (data && data.code === 200) {
+          if (statusText) statusText.innerText = "验证码已发送至手机，请查收";
+          if (typeof showToast === 'function') showToast("验证码已发送！");
+          // 开始倒计时
+          this.ncmCaptchaCooldown = 60;
+          this.captchaCooldownTimer = setInterval(() => {
+            this.ncmCaptchaCooldown--;
+            if (sendBtn) {
+              if (this.ncmCaptchaCooldown > 0) {
+                sendBtn.innerText = `${this.ncmCaptchaCooldown}s`;
+                sendBtn.disabled = true;
+              } else {
+                sendBtn.innerText = "重新发送";
+                sendBtn.disabled = false;
+                clearInterval(this.captchaCooldownTimer);
               }
-            }, 1000);
-          } else {
-            if (statusText) statusText.innerText = "发送失败: " + (data.message || "未知错误");
-            if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = "发送验证码"; }
-          }
+            }
+          }, 1000);
         } else {
-          if (statusText) statusText.innerText = "API 连接失败，请检查 API 地址设置";
+          const reason = data && data.message ? data.message : "无法连接服务器，请检查 API 地址";
+          if (statusText) statusText.innerText = "发送失败: " + reason;
           if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = "发送验证码"; }
         }
       } catch(e) {
@@ -1547,39 +1947,34 @@
 
       try {
         const loginUrl = `${this.ncmApiBase}/login/cellphone?phone=${phone}&captcha=${captcha}` + (this.ncmAnonCookie ? `&cookie=${encodeURIComponent(this.ncmAnonCookie)}` : "");
-        const res = await fetch(loginUrl).catch(() => null);
+        // ★ 核心修复：登录业务失败时服务端返回 HTTP 503（code 503），
+        //   必须按 body.code 判断成功与否，否则会误报"API 连接失败"
+        const data = await this.ncmRequest(loginUrl);
 
-        if (res && res.ok) {
-          const data = await res.json();
-          if (data.code === 200) {
-            // 提取 cookie
-            let authCookie = "";
-            if (data.cookie && Array.isArray(data.cookie)) {
-              authCookie = data.cookie.map(c => c.split(';')[0]).join('; ');
-            }
-            if (!authCookie) {
-              // 如果 cookie 在 body 里
-              const musicU = (data.cookie || []).find(c => c.startsWith('MUSIC_U='));
-              if (musicU) authCookie = musicU;
-            }
-
-            localStorage.setItem("ncm_user_cookie", authCookie);
-            this.ncmCookie = authCookie;
-            this.isVip = data.account && data.account.vipType > 0;
-
-            if (statusText) statusText.innerText = "登录成功！正在同步红心歌单...";
-            if (loginBtn) { loginBtn.innerText = "登录成功 ✓"; loginBtn.style.background = "#22c55e"; }
-            if (typeof showToast === 'function') showToast("登录成功！同步红心歌单中...");
-
-            // 同步用户数据
-            await this.syncNcmUserData(authCookie);
-            setTimeout(() => this.closeNcmLoginModal(), 1500);
-          } else {
-            if (statusText) statusText.innerText = "登录失败: " + (data.message || "验证码错误或已过期");
+        if (data && data.code === 200) {
+          // 提取 cookie（兼容字符串 / 数组格式）
+          const authCookie = this.extractNcmCookie(data.cookie);
+          if (!authCookie) {
+            if (statusText) statusText.innerText = "登录成功但未获取到 Cookie，请重试";
             if (loginBtn) { loginBtn.disabled = false; loginBtn.innerText = "登录并同步"; }
+            return;
           }
+
+          localStorage.setItem("ncm_user_cookie", authCookie);
+          this.ncmCookie = authCookie;
+          this.isVip = data.account && data.account.vipType > 0;
+
+          if (statusText) statusText.innerText = "登录成功！正在同步红心歌单...";
+          if (loginBtn) { loginBtn.innerText = "登录成功 ✓"; loginBtn.style.background = "#22c55e"; }
+          if (typeof showToast === 'function') showToast("登录成功！同步红心歌单中...");
+
+          // 同步用户数据
+          await this.syncNcmUserData(authCookie);
+          setTimeout(() => this.closeNcmLoginModal(), 1500);
         } else {
-          if (statusText) statusText.innerText = "API 连接失败";
+          // 业务失败：显示服务端真实原因（验证码错误/过期/风控等）
+          const reason = data && data.message ? data.message : (data && data.msg ? data.msg : "验证码错误或已过期");
+          if (statusText) statusText.innerText = "登录失败: " + reason;
           if (loginBtn) { loginBtn.disabled = false; loginBtn.innerText = "登录并同步"; }
         }
       } catch(e) {
@@ -1610,17 +2005,14 @@
       if (typeof showToast === 'function') showToast("正在向网易云检索该账号的红心歌单...");
 
       try {
-        const res = await fetch(`${this.ncmApiBase}/user/playlist?uid=${uidOrPlaylistId}`).catch(() => null);
-        if (res && res.ok) {
-          const data = await res.json();
-          if (data && data.playlist && data.playlist.length > 0) {
-            const likedPl = data.playlist[0];
-            
-            const trackRes = await fetch(`${this.ncmApiBase}/playlist/track/all?id=${likedPl.id}&limit=50`).catch(() => null);
-            if (trackRes && trackRes.ok) {
-              const trackData = await trackRes.json();
-              if (trackData && trackData.songs) {
-                let existingPl = this.playlists.find(p => p.id === "ncm_liked");
+        // ★ 同步接口同样按 body.code 判断（业务失败时 HTTP 可能 503）
+        const data = await this.ncmRequest(`${this.ncmApiBase}/user/playlist?uid=${uidOrPlaylistId}`);
+        if (data && data.code === 200 && data.playlist && data.playlist.length > 0) {
+          const likedPl = data.playlist[0];
+
+          const trackData = await this.ncmRequest(`${this.ncmApiBase}/playlist/track/all?id=${likedPl.id}&limit=50`);
+          if (trackData && trackData.code === 200 && trackData.songs) {
+            let existingPl = this.playlists.find(p => p.id === "ncm_liked");
                 if (!existingPl) {
                   existingPl = { id: "ncm_liked", name: "我喜欢的音乐 (网易云)", coverUrl: likedPl.coverImgUrl || "", songIds: [] };
                   this.playlists.unshift(existingPl);
@@ -1651,8 +2043,6 @@
                 return;
               }
             }
-          }
-        }
         throw new Error("无法读取该 UID 的公开歌单");
       } catch(e) {
         if (typeof showToast === 'function') showToast("UID 导入失败: " + e.message);
@@ -1664,20 +2054,18 @@
       if (typeof showToast === 'function') showToast("正在同步网易云个人资料与红心歌单...");
 
       try {
-        const accRes = await fetch(`${this.ncmApiBase}/user/account?cookie=${encodeURIComponent(cookieStr)}`).catch(() => null);
+        // ★ 同样按 body code 判断
+        const accData = await this.ncmRequest(`${this.ncmApiBase}/user/account?cookie=${encodeURIComponent(cookieStr)}`);
         let uid = null;
         let nickname = "";
         let avatarUrl = "";
         let isVip = false;
 
-        if (accRes && accRes.ok) {
-          const accData = await accRes.json();
-          if (accData && accData.profile) {
-            uid = accData.profile.userId;
-            nickname = accData.profile.nickname;
-            avatarUrl = accData.profile.avatarUrl;
-            isVip = accData.account && accData.account.vipType > 0;
-          }
+        if (accData && accData.code === 200 && accData.profile) {
+          uid = accData.profile.userId;
+          nickname = accData.profile.nickname;
+          avatarUrl = accData.profile.avatarUrl;
+          isVip = accData.account && accData.account.vipType > 0;
         }
 
         if (uid) {
@@ -1914,11 +2302,8 @@
       if (typeof showToast === 'function') showToast("AI 伙伴正在同频思考回复...");
 
       try {
-        const activePresetId = localStorage.getItem("global_api_preset_id");
-        if (!activePresetId) throw new Error("未配置 API 预设，请先前往设置配置");
-
-        const api = await db.api_presets.get(Number(activePresetId));
-        if (!api || !api.url) throw new Error("API 预设无效");
+        const api = await window.apiRoutes.resolve("music");
+        if (!api || !api.url) throw new Error("未配置 API 预设，请先前往设置配置");
 
         let basePrompt = "";
         if (mainSession && typeof buildGlobalSystemPrompt === 'function') {
@@ -1974,24 +2359,33 @@
           messagesToSend.push({ role: "user", content: "你觉得这首歌听起来怎么样？" });
         }
 
-        const endpoint = api.url.endsWith('/chat/completions') ? api.url : `${api.url.replace(/\/+$/, '')}/chat/completions`;
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${api.key}`
-          },
-          body: JSON.stringify({
-            model: api.model,
-            messages: messagesToSend,
-            temperature: api.temperature || 0.7
-          })
-        });
+        let islandContent;
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            islandContent = await window.fwCallLLM(api, messagesToSend, { temperature: api.temperature || 0.7 });
+          } catch(e) { /* fall through to original fetch */ }
+        }
+        if (islandContent === undefined) {
+          const endpoint = api.url.endsWith('/chat/completions') ? api.url : `${api.url.replace(/\/+$/, '')}/chat/completions`;
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${api.key}`
+            },
+            body: JSON.stringify({
+              model: api.model,
+              messages: messagesToSend,
+              temperature: api.temperature || 0.7
+            })
+          });
 
-        if (!response.ok) throw new Error("API 响应失败");
+          if (!response.ok) throw new Error("API 响应失败");
 
-        const data = await response.json();
-        let replyText = data.choices[0].message.content.trim();
+          const data = await response.json();
+          islandContent = data.choices[0].message.content;
+        }
+        let replyText = islandContent.trim();
 
         replyText = this.cleanCotText(replyText);
 
@@ -2113,6 +2507,7 @@
       // 2. 网易云在线搜索：多通道容错竞速
       let onlineSongs = [];
       const encKw = encodeURIComponent(keyword);
+      this.searchResultSongs = []; // 记录本次在线搜索结果（供搜索页点播，不写入曲库）
 
       // 通道一：官方搜索 API（走 ncmNativeFetch，含 allorigins 代理兜底）
       try {
@@ -2126,7 +2521,8 @@
             id: song.id,
             name: song.name,
             artist: song.artists ? song.artists.map(a => a.name).join("/") : "未知歌手",
-            fee: song.fee || 0
+            fee: song.fee || 0,
+            cover: song.album ? (song.album.picUrl || "") : (song.al ? song.al.picUrl : "")
           }));
         }
       } catch(e) { /* 通道一失败，继续尝试通道二 */ }
@@ -2134,20 +2530,18 @@
       // 通道二：Vercel 代理 API（原通道，作为兜底）
       if (onlineSongs.length === 0) {
         try {
-          const res = await Promise.race([
-            fetch(`${this.ncmApiBase}/search?keywords=${encKw}`).catch(() => null),
+          const data = await Promise.race([
+            this.ncmRequest(`${this.ncmApiBase}/search?keywords=${encKw}`),
             new Promise(resolve => setTimeout(() => resolve(null), 5000))
           ]);
-          if (res && res.ok) {
-            const data = await res.json();
-            if (data && data.result && Array.isArray(data.result.songs)) {
-              onlineSongs = data.result.songs.map(song => ({
-                id: song.id,
-                name: song.name,
-                artist: song.artists ? song.artists.map(a => a.name).join("/") : "未知歌手",
-                fee: song.fee || 0
-              }));
-            }
+          if (data && data.code === 200 && data.result && Array.isArray(data.result.songs)) {
+            onlineSongs = data.result.songs.map(song => ({
+              id: song.id,
+              name: song.name,
+              artist: song.artists ? song.artists.map(a => a.name).join("/") : "未知歌手",
+              fee: song.fee || 0,
+              cover: song.album ? (song.album.picUrl || "") : (song.al ? song.al.picUrl : "")
+            }));
           }
         } catch(e) { /* 通道二失败，继续尝试通道三 */ }
       }
@@ -2166,7 +2560,8 @@
                 id: t.id || t.song_id,
                 name: t.name || t.title || "未知歌曲",
                 artist: t.artist || t.author || "网易云歌手",
-                fee: 0
+                fee: 0,
+                cover: t.pic || t.cover || ""
               }));
             }
           }
@@ -2174,14 +2569,19 @@
       }
 
       if (onlineSongs.length > 0) {
+        this.searchResultSongs = onlineSongs; // 记录搜索结果供点播
         html += `<div style="font-size:11px; font-weight:800; color:#0284c7; margin:10px 0 6px 0;">-- 网易云在线曲库 --</div>`;
         onlineSongs.forEach(song => {
           const songId = song.id;
           const title = String(song.name).replace(/'/g, "\\'");
           const artist = String(song.artist).replace(/'/g, "\\'");
+          const cover = String(song.cover || "").replace(/'/g, "\\'");
           const isVip = song.fee === 1;
           html += `
             <div class="ncm-song-item" style="margin-bottom:8px; display:flex; align-items:center;">
+              <div style="width:40px; height:40px; border-radius:8px; overflow:hidden; flex-shrink:0; margin-right:10px; background:#f1f5f9; ${cover ? `background-image:url('${cover}'); background-size:cover; background-position:center;` : ""}">
+                ${cover ? "" : '<svg viewBox="0 0 24 24" width="20" height="20" style="margin:10px;color:#cbd5e1;" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>'}
+              </div>
               <div class="ncm-song-info" style="flex:1;" onclick="musicSystem.playOnlineNcmSong('${songId}', '${title}', '${artist}', ${isVip})">
                 <div class="ncm-song-title">
                   ${song.name}
@@ -2209,7 +2609,7 @@
       }
     },
 
-    // 将搜索结果导入到歌单（可选择目标歌单）
+    // 将搜索结果导入到歌单（可选择目标歌单），自动补全封面与歌词
     async importSearchResult(songId, title, artist, isVip) {
       const playlists = this.playlists.filter(p => !p.id.startsWith("ncm_liked"));
       if (playlists.length === 0) {
@@ -2226,6 +2626,12 @@
         isVip: isVip,
         isFavorite: false
       };
+      // 自动补全封面与歌词
+      const meta = await this.fetchNcmSongDetail(songId).catch(() => null);
+      if (meta) {
+        if (meta.cover) songObj.cover = meta.cover;
+        if (meta.lyrics && meta.lyrics !== "[00:00.00]暂无歌词") songObj.lyrics = meta.lyrics;
+      }
       await this.saveSongToIndexedDB(songObj);
       let targetPl = playlists[0];
       if (playlists.length > 1) {
@@ -2259,11 +2665,33 @@
         isFavorite: false
       };
 
-      await this.saveSongToIndexedDB(songObj);
-      const songs = await this.getAllSongsFromIndexedDB();
-      const idx = songs.findIndex(s => s.id === songObj.id);
-      if (idx !== -1) {
-        this.playSongFromList(idx);
+      // 自动补全封面与歌词后播放
+      const meta = await this.fetchNcmSongDetail(songId).catch(() => null);
+      if (meta) {
+        if (meta.cover) songObj.cover = meta.cover;
+        if (meta.lyrics && meta.lyrics !== "[00:00.00]暂无歌词") songObj.lyrics = meta.lyrics;
+      }
+
+      // ★ 修复音源不匹配：在线搜索歌曲只在"搜索结果"列表内播放，不写入 IndexedDB、不污染"我的"曲库
+      // 搜索前先记录当前搜索结果（searchNcmMusic 里已填充 searchResultSongs）
+      if (!this.searchResultSongs || this.searchResultSongs.length === 0) {
+        this.searchResultSongs = [];
+        this._searchPlayMode = false;
+      }
+      // 找到当前歌曲在搜索结果列表中的位置（若存在）则按搜索结果播放；否则作为临时歌曲追加播放
+      const sIdx = this.searchResultSongs.findIndex(s => String(s.id) === String(songObj.id));
+      if (sIdx !== -1) {
+        this._searchPlayMode = true;
+        this.playSongFromList(sIdx);
+      } else {
+        // 不在当前搜索结果中（例如从历史进入），退回旧行为：临时保存后播放
+        await this.saveSongToIndexedDB(songObj);
+        const songs = await this.getAllSongsFromIndexedDB();
+        const idx = songs.findIndex(s => s.id === songObj.id);
+        if (idx !== -1) {
+          this._searchPlayMode = false;
+          this.playSongFromList(idx);
+        }
       }
     }
   };

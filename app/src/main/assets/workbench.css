@@ -1,0 +1,38 @@
+/* ===== 工作台 Agent 样式 ===== */
+.wb-conv-card:hover {
+  border-color: var(--primary) !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08) !important;
+  transform: translateY(-1px);
+}
+.wb-icon-btn:hover {
+  opacity: 0.75;
+}
+#wb-input:focus {
+  border-color: var(--primary) !important;
+  background: #fff !important;
+}
+/* 消息流子项：禁止 flex 压缩，保证思考块/工具卡片/正文展开时不被压扁 */
+#wb-msgs > * {
+  flex-shrink: 0;
+}
+#wb-msgs > .wb-tool-card,
+#wb-msgs > .wb-think-block {
+  flex-shrink: 0;
+  min-width: 0;
+}
+.wb-tool-card .wb-tool-body,
+.wb-think-block .wb-think-body {
+  max-height: 320px;
+  overflow-y: auto;
+}
+#wb-msgs::-webkit-scrollbar,
+#wb-list::-webkit-scrollbar,
+#wb-pick-list::-webkit-scrollbar {
+  width: 4px;
+}
+#wb-msgs::-webkit-scrollbar-thumb,
+#wb-list::-webkit-scrollbar-thumb,
+#wb-pick-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}

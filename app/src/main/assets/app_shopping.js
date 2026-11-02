@@ -659,7 +659,7 @@
       // 搜索场景：无预设，尝试 AI 生成
       if (_searchActive) {
         try {
-          const api = await getActiveApiPreset();
+          const api = await getActiveApiPreset("shopping");
           const res = await fetchAIResponse(api, '你是电商商品推荐引擎。请根据搜索关键词「' + category + '」生成8个相关商品。严格按JSON数组返回：\n[{"name":"商品名","price":99.9,"originalPrice":199.0,"desc":"20字描述","freeShip":true,"insured":true}]\n只返回纯JSON，不要markdown。');
           list = parseList(res);
         } catch (e) { list = []; }
@@ -693,7 +693,7 @@
   // AI 生成新一批商品（用户主动点"换一批"时调用）
   async function aiRefreshProducts(category) {
     try {
-      const api = await getActiveApiPreset();
+      const api = await getActiveApiPreset("shopping");
       const res = await fetchAIResponse(api, buildProductPrompt(category));
       let list = parseList(res);
       if (!list.length) list = fallbackProducts(category);
@@ -856,7 +856,7 @@
   // AI 生成新一批店铺（用户主动点"换一批"时调用）
   async function aiRefreshStores(category) {
     try {
-      const api = await getActiveApiPreset();
+      const api = await getActiveApiPreset("shopping");
       const prompt = '你是外卖平台推荐引擎。请为「' + category + '」分类生成8家店铺。严格按JSON数组返回：\n[{"name":"店铺名","rating":4.7,"deliveryFee":3,"deliveryTime":30,"desc":"15字描述","useCoupon":true}]\n只返回纯JSON，不要markdown。rating范围4.0-5.0，deliveryFee单位元，deliveryTime单位分钟，useCoupon表示是否支持神券。';
       const res = await fetchAIResponse(api, prompt);
       let list = parseList(res);

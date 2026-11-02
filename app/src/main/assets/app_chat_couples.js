@@ -91,7 +91,7 @@
       // 1. 日程管理事件
       const btnCalAdd = document.getElementById("btn-couples-cal-add");
       if (btnCalAdd) {
-        btnCalAdd.onclick = () => this.addNewScheduleForm();
+        btnCalAdd.onclick = () => this.addAnniversaryForm();
       }
       const btnCalAi = document.getElementById("btn-couples-cal-ai");
       if (btnCalAi) {
@@ -141,10 +141,7 @@
       }
 
       // 4. 悄悄话事件
-      const btnWhisperSend = document.getElementById("btn-couples-whisper-send");
-      if (btnWhisperSend) {
-        btnWhisperSend.onclick = () => this.sendWhisperMessage();
-      }
+      // 发送按钮已移除：发消息靠输入框回车（见下），回车即上屏并触发对方接话
       const btnWhisperReply = document.getElementById("btn-couples-whisper-reply");
       if (btnWhisperReply) {
         btnWhisperReply.onclick = () => this.triggerWhisperReply();
@@ -153,9 +150,23 @@
       if (btnWhisperTopic) {
         btnWhisperTopic.onclick = () => this.triggerWhisperTopicForm();
       }
+      const btnWhisperSettings = document.getElementById("btn-couples-whisper-settings");
+      if (btnWhisperSettings) {
+        btnWhisperSettings.onclick = () => this.openWhisperSettings();
+      }
       const btnWhisperTopicEnd = document.getElementById("btn-couples-whisper-topic-end");
       if (btnWhisperTopicEnd) {
         btnWhisperTopicEnd.onclick = () => this.endWhisperTopic();
+      }
+      // 输入框回车发送（Shift+Enter 换行）
+      const whisperInput = document.getElementById("couples-whisper-input");
+      if (whisperInput) {
+        whisperInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            this.sendWhisperMessage();
+          }
+        });
       }
 
       // 5. 愿望清单事件
@@ -181,6 +192,34 @@
         btnAssetsUpload.onclick = () => fileAssetsInput.click();
         fileAssetsInput.onchange = (e) => this.handleAssetUpload(e);
       }
+
+      // 7. 弹窗防卡死兜底：ESC 关掉最上面那层磨砂弹窗
+      if (!window.__couplesDialogEscapeBound) {
+        window.__couplesDialogEscapeBound = true;
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape") return;
+          const overlays = document.querySelectorAll(".couples-dialog-overlay, .couples-sheet-overlay");
+          if (!overlays.length) return;
+          const top = overlays[overlays.length - 1];
+          top.classList.remove("active");
+          setTimeout(() => top.remove(), 200);
+        });
+      }
+
+      // 8. 兜底：点弹窗遮罩（卡片以外）也能关掉。用 win-couples 上的委托，
+      //    这样「隐藏了取消/确认按钮」的只读弹窗也不会把人卡住。
+      const winCouplesEl = document.getElementById("win-couples");
+      if (winCouplesEl && !winCouplesEl._couplesBackdropBound) {
+        winCouplesEl._couplesBackdropBound = true;
+        winCouplesEl.addEventListener("click", (e) => {
+          const el = e.target;
+          if (!el || !el.classList || !el.classList.contains("couples-dialog-overlay")) return;
+          if (!el.classList.contains("active")) return;
+          // 计时器兜底移除：即使某个弹窗自己绑过 onclick，也不会残留
+          el.classList.remove("active");
+          setTimeout(() => { try { el.remove(); } catch (err) {} }, 220);
+        });
+      }
     },
 
     /**
@@ -188,12 +227,15 @@
      */
     showFrostedDialog(title, htmlContent, onConfirm, onCancel) {
       const parent = document.getElementById("win-couples");
-      if (!parent) return;
+      if (!parent) return null;
 
       const overlay = document.createElement("div");
       overlay.className = "couples-dialog-overlay";
       overlay.innerHTML = `
         <div class="couples-dialog-card">
+          <button class="couples-dialog-x" id="btn-couples-dialog-x" title="关闭" aria-label="关闭">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          </button>
           <div class="couples-dialog-title">${title}</div>
           <div style="margin-bottom:18px; max-height:260px; overflow-y:auto; scrollbar-width:none;">
             ${htmlContent}
@@ -213,6 +255,14 @@
         setTimeout(() => overlay.remove(), 200);
       };
 
+      // 三条关闭通路：右上角 X / 点遮罩 / 取消按钮
+      // （历史上「隐藏取消+确认」只读弹窗没有任何关闭方式，会被彻底卡死）
+      const xBtn = overlay.querySelector("#btn-couples-dialog-x");
+      if (xBtn) xBtn.onclick = () => { close(); if (typeof onCancel === 'function') onCancel(); };
+      overlay.onclick = (e) => {
+        if (e.target === overlay) { close(); if (typeof onCancel === 'function') onCancel(); }
+      };
+
       overlay.querySelector("#btn-couples-dialog-cancel").onclick = () => {
         close();
         if (typeof onCancel === 'function') onCancel();
@@ -225,6 +275,79 @@
         }
         close();
       };
+
+      return overlay;
+    },
+
+    // 自绘确认卡（Promise 版）：项目红线禁止原生 confirm
+    confirmCouples(title, message, confirmLabel) {
+      return new Promise((resolve) => {
+        const parent = document.getElementById("win-couples");
+        if (!parent) { resolve(false); return; }
+        const overlay = document.createElement("div");
+        overlay.className = "couples-dialog-overlay";
+        overlay.innerHTML = `
+          <div class="couples-dialog-card">
+            <button class="couples-dialog-x" id="btn-couples-dialog-x" title="关闭" aria-label="关闭">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+            </button>
+            <div class="couples-dialog-title">${window.escapeHtml(title)}</div>
+            <div style="margin-bottom:18px; font-size:12.5px; line-height:1.65; color:#475569; text-align:left;">${window.escapeHtml(message)}</div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-pwa-modal cancel" id="btn-couples-dialog-cancel" style="border-radius:10px; height:38px;">取消</button>
+              <button class="btn btn-pwa-modal confirm" id="btn-couples-dialog-confirm" style="border-radius:10px; height:38px; background:#ff8fa3;">${confirmLabel || '确定'}</button>
+            </div>
+          </div>
+        `;
+        parent.appendChild(overlay);
+        setTimeout(() => overlay.classList.add("active"), 10);
+        let settled = false;
+        const close = () => { overlay.classList.remove("active"); setTimeout(() => overlay.remove(), 200); };
+        const finish = (val) => { if (settled) return; settled = true; close(); resolve(val); };
+        overlay.querySelector("#btn-couples-dialog-cancel").onclick = () => finish(false);
+        overlay.querySelector("#btn-couples-dialog-confirm").onclick = () => finish(true);
+        const xBtn = overlay.querySelector("#btn-couples-dialog-x");
+        if (xBtn) xBtn.onclick = () => finish(false);
+        overlay.onclick = (e) => { if (e.target === overlay) finish(false); };
+      });
+    },
+
+    // 自绘提示卡（Promise 版）：替代原生 alert
+    alertCouples(title, message) {
+      return new Promise((resolve) => {
+        const parent = document.getElementById("win-couples");
+        if (!parent) {
+          if (typeof showToast === 'function') showToast(message || title);
+          resolve();
+          return;
+        }
+        const overlay = document.createElement("div");
+        overlay.className = "couples-dialog-overlay";
+        overlay.innerHTML = `
+          <div class="couples-dialog-card">
+            <button class="couples-dialog-x" id="btn-couples-dialog-x" title="关闭" aria-label="关闭">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+            </button>
+            <div class="couples-dialog-title">${window.escapeHtml(title)}</div>
+            <div style="margin-bottom:18px; font-size:12.5px; line-height:1.65; color:#475569; text-align:left;">${window.escapeHtml(message)}</div>
+            <button class="btn btn-pwa-modal confirm" id="btn-couples-alert-ok" style="width:100%; border-radius:10px; height:38px; background:#ff8fa3;">知道了</button>
+          </div>
+        `;
+        parent.appendChild(overlay);
+        setTimeout(() => overlay.classList.add("active"), 10);
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          overlay.classList.remove("active");
+          setTimeout(() => overlay.remove(), 200);
+          resolve();
+        };
+        overlay.querySelector("#btn-couples-alert-ok").onclick = finish;
+        const xBtn = overlay.querySelector("#btn-couples-dialog-x");
+        if (xBtn) xBtn.onclick = finish;
+        overlay.onclick = (e) => { if (e.target === overlay) finish(); };
+      });
     },
 
     /**
@@ -233,7 +356,7 @@
     async openModal() {
       this.activeMeId = localStorage.getItem("active_me_id");
       if (!this.activeMeId) {
-        alert("请先在‘我的’选项卡下选择我的人设！");
+        await this.alertCouples("还没有选择人设", "请先到「我的」选项卡下选择我的人设，再来情侣空间。");
         return;
       }
 
@@ -255,7 +378,7 @@
           targetSess = fallbackSess;
           this.activeCharId = fallbackSess.charId;
         } else {
-          alert("情侣空间仅限单聊模式！请先在档案库建立单聊对象！");
+          await this.alertCouples("还差一个单聊对象", "情侣空间只在单聊里可用：请先到档案库建立一段单聊关系，再回来。");
           return;
         }
       }
@@ -307,8 +430,7 @@
         document.getElementById("couples-mood-bubble-user").innerText = "同步频率中...";
 
         try {
-          const presetId = localStorage.getItem("global_api_preset_id");
-          const api = await db.api_presets.get(Number(presetId));
+          const api = await window.apiRoutes.resolve("couples");
           if (!api) throw new Error("API未就绪");
 
           let historyText = "";
@@ -330,27 +452,36 @@
   "progress": 情感进度值
 }`;
 
-          const response = await fetch(`${api.url}/chat/completions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-            body: JSON.stringify({
-              model: api.model,
-              messages: [{ role: "user", content: prompt + `\n\n对话历史：\n${historyText}` }],
-              temperature: 0.7
-            })
-          });
-
-          if (!response.ok) throw new Error("API异常");
-          const res = await response.json();
-          const parsed = JSON.parse(res.choices[0].message.content.replace(/^\`\`\`json/i, '').replace(/\`\`\`$/i, '').trim());
+          const moodMessages = [{ role: "user", content: prompt + `\n\n对话历史：\n${historyText}` }];
+          let moodRaw;
+          if (typeof window.fwCallLLM === "function") {
+            try { moodRaw = await window.fwCallLLM(api, moodMessages, { temperature: 0.7 }); } catch (e) { moodRaw = undefined; }
+          }
+          if (moodRaw === undefined) {
+            const response = await fetch(`${api.url}/chat/completions`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+              body: JSON.stringify({
+                model: api.model,
+                messages: moodMessages,
+                temperature: 0.7
+              })
+            });
+            if (!response.ok) throw new Error("API异常");
+            const res = await response.json();
+            moodRaw = res.choices[0].message.content;
+          }
+          const parsed = JSON.parse(String(moodRaw || '').replace(/^\`\`\`json/i, '').replace(/\`\`\`$/i, '').trim());
 
           charMood = parsed.charMood;
           userMood = parsed.userMood;
           progress = parsed.progress;
 
-          localStorage.setItem(keyChar, charMood);
-          localStorage.setItem(keyUser, userMood);
-          localStorage.setItem(keyProgress, progress);
+          try {
+            localStorage.setItem(keyChar, charMood);
+            localStorage.setItem(keyUser, userMood);
+            localStorage.setItem(keyProgress, progress);
+          } catch (e) { console.warn("[情侣空间] 心情卡缓存写入失败", e); }
 
         } catch (e) {
           console.error(e);
@@ -371,7 +502,7 @@
       this.currentSubPage = pageId;
       document.getElementById(`page-couples-${pageId}`).classList.add("active");
 
-      if (pageId === 'calendar') this.renderCalendar();
+      if (pageId === 'calendar') this.renderAnniversaries();
       if (pageId === 'album') this.renderAlbum();
       if (pageId === 'handbook') this.renderHandbookShelf();
       if (pageId === 'whisper') this.renderWhisperChat();
@@ -389,7 +520,7 @@
       }
 
       if (chars.length === 0) {
-        alert("未检测到可用的单聊对象，请先去档案库建立！");
+        await this.alertCouples("暂时没有可以共度的人", "先去档案库建立一段单聊关系，这里就会出现 TA。");
         return;
       }
 
@@ -684,7 +815,7 @@
         }
 
         if (!content) {
-          alert("必须输入日程计划具体内容！");
+          await this.alertCouples("还差内容", "写点什么吧：日程总得有个具体安排。");
           return false;
         }
 
@@ -735,8 +866,7 @@
       showToast("正在检索恋爱羁绊与生活，推演全天日程计划...");
 
       try {
-        const presetId = localStorage.getItem("global_api_preset_id");
-        const api = await db.api_presets.get(Number(presetId));
+        const api = await window.apiRoutes.resolve("couples");
         if (!api) throw new Error("API未配置");
 
         const char = await db.archives.get(Number(this.activeCharId));
@@ -776,19 +906,29 @@
 最近对话历史：
 ${historyText || "刚刚相见，倍感温润。"}`;
 
-        const response = await fetch(`${api.url}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-          body: JSON.stringify({
-            model: api.model,
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.8
-          })
-        });
+        let rawContent;
+        const schedMessages = [{ role: "user", content: prompt }];
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            rawContent = await window.fwCallLLM(api, schedMessages, { temperature: 0.8 });
+          } catch(e) { /* fall through to original fetch */ }
+        }
+        if (rawContent === undefined) {
+          const response = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({
+              model: api.model,
+              messages: schedMessages,
+              temperature: 0.8
+            })
+          });
 
-        if (!response.ok) throw new Error("API响应异常");
-        const res = await response.json();
-        const rawJsonText = res.choices[0].message.content.replace(/^\`\`\`json/i, '').replace(/\`\`\`$/i, '').trim();
+          if (!response.ok) throw new Error("API响应异常");
+          const res = await response.json();
+          rawContent = res.choices[0].message.content;
+        }
+        const rawJsonText = rawContent.replace(/^\`\`\`json/i, '').replace(/\`\`\`$/i, '').trim();
         const schedulesArr = JSON.parse(rawJsonText);
 
         const year = this.calendarSelectedDate.getFullYear();
@@ -822,16 +962,139 @@ ${historyText || "刚刚相见，倍感温润。"}`;
     toggleScheduleSync() {
       const syncKey = `couples_cal_sync_${this.activeMeId}_${this.activeCharId}`;
       const state = localStorage.getItem(syncKey) === "true";
-      localStorage.setItem(syncKey, !state ? "true" : "false");
+      try { localStorage.setItem(syncKey, !state ? "true" : "false"); } catch (e) {}
       showToast(!state ? "本日日程数据已绑定同步并注入聊天 Prompt" : "已断开日程与聊天的同步");
     },
 
     async deleteSchedule(id) {
-      if (confirm("确定要删除这条日程计划吗？")) {
-        await db.table('couples_schedules').delete(id);
-        this.renderCalendar();
-        showToast("日程已删除");
+      const yes = await this.confirmCouples("删除这条日程？", "删除后这条安排不会保留，确定要删吗？", "删除");
+      if (!yes) return;
+      await db.table('couples_schedules').delete(id);
+      this.renderCalendar();
+      showToast("日程已删除");
+    },
+
+    // ==========================================
+    // 纪念日（纯倒数）：只纪念，不再生成日程/生理期——日程能力已迁到「仪轨」应用
+    // ==========================================
+    async renderAnniversaries() {
+      const container = document.getElementById("couples-anniv-list");
+      if (!container) return;
+      const charId = Number(this.activeCharId);
+      const meId = Number(this.activeMeId);
+      let rows = [];
+      try {
+        rows = await db.ritual_anniversaries.where('charId').equals(charId).toArray();
+      } catch (e) {
+        try {
+          const all = await db.ritual_anniversaries.toArray();
+          rows = all.filter(r => Number(r.charId) === charId);
+        } catch (e2) { rows = []; }
       }
+      rows = rows.filter(r => Number(r.meId) === meId);
+
+      const pad = n => String(n).padStart(2, '0');
+      const now = new Date();
+      const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weeks = ["日", "一", "二", "三", "四", "五", "六"];
+      const items = rows.map(r => {
+        const d = new Date(r.date + 'T00:00:00');
+        const diff = Math.round((d.getTime() - todayMid.getTime()) / 86400000);
+        return Object.assign({}, r, { diff: diff, valid: !isNaN(d.getTime()) });
+      }).filter(r => r.valid);
+
+      items.sort((a, b) => {
+        const af = a.diff >= 0, bf = b.diff >= 0;
+        if (af !== bf) return af ? -1 : 1;          // 未来的在前
+        return af ? a.diff - b.diff : b.diff - a.diff;
+      });
+
+      if (!items.length) {
+        container.innerHTML =
+          '<div style="background:#fff; border:1.5px dashed #f3d4da; border-radius:16px; padding:30px 18px; text-align:center;">' +
+            '<div style="display:flex; justify-content:center; color:#f9a8b8; margin-bottom:10px;">' +
+              '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/><path d="M12 13.6c.7-.9 2.2-.5 2.2.7 0 .9-1 1.7-2.2 2.5-1.2-.8-2.2-1.6-2.2-2.5 0-1.2 1.5-1.6 2.2-.7z" fill="currentColor" stroke="none"/></svg>' +
+            '</div>' +
+            '<div style="font-size:12.5px; color:#b8a0a8; line-height:1.75; margin-bottom:16px;">还没有纪念日。<br>把你们的第一次、生日、约定好的日子记下来吧。</div>' +
+            '<button id="couples-anniv-empty-add" style="padding:10px 20px; border:none; background:#ff8fa3; color:#fff; border-radius:11px; font-size:12.5px; font-weight:800; cursor:pointer; font-family:inherit;">添加纪念日</button>' +
+          '</div>';
+        const b = document.getElementById("couples-anniv-empty-add");
+        if (b) b.onclick = () => this.addAnniversaryForm();
+        return;
+      }
+
+      container.innerHTML = items.map(r => {
+        const d = new Date(r.date + 'T00:00:00');
+        const dateLabel = d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 · 星期' + weeks[d.getDay()];
+        const isToday = r.diff === 0;
+        const big = isToday ? '就是今天' : (r.diff > 0 ? ('还有 ' + r.diff + ' 天') : ('已经 ' + Math.abs(r.diff) + ' 天'));
+        const accent = isToday ? '#e11d48' : (r.diff > 0 ? '#ff8fa3' : '#b9a7ad');
+        return '<div style="background:#fff; border:1px solid #f6e7ea; border-radius:16px; padding:14px 16px; position:relative; overflow:hidden;">' +
+            '<div style="position:absolute; left:0; top:0; bottom:0; width:3px; background:' + accent + ';"></div>' +
+            '<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">' +
+              '<div style="flex:1; min-width:0;">' +
+                '<div style="font-size:14px; font-weight:800; color:#3d2b31; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + window.escapeHtml(r.title || '纪念日') + '</div>' +
+                '<div style="font-size:11px; color:#b8a0a8; margin-top:3px;">' + dateLabel + '</div>' +
+              '</div>' +
+              '<button data-anniv-del="' + r.id + '" title="删除" style="flex-shrink:0; display:flex; align-items:center; justify-content:center; width:28px; height:28px; border:none; background:#fff5f6; border-radius:9px; color:#f87171; cursor:pointer;">' +
+                '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>' +
+              '</button>' +
+            '</div>' +
+            '<div style="display:flex; align-items:baseline; gap:6px; margin-top:10px;">' +
+              '<span style="font-size:20px; font-weight:800; color:' + accent + '; letter-spacing:.5px;">' + big + '</span>' +
+            '</div>' +
+            (r.note ? '<div style="font-size:11.5px; color:#8a7a80; margin-top:7px; line-height:1.6;">' + window.escapeHtml(r.note) + '</div>' : '') +
+          '</div>';
+      }).join('');
+
+      container.querySelectorAll('[data-anniv-del]').forEach(btn => {
+        btn.onclick = () => this.deleteAnniversary(Number(btn.getAttribute('data-anniv-del')));
+      });
+    },
+
+    addAnniversaryForm() {
+      const pad = n => String(n).padStart(2, '0');
+      const now = new Date();
+      const defaultDate = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+      const formHtml = `
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div>
+            <label style="font-size:11px; font-weight:700; color:#8a7a80; display:block; margin-bottom:6px;">纪念日名称</label>
+            <input type="text" id="anniv-form-title" placeholder="例如：我们在一起的第一天" style="width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid #f3d4da; border-radius:10px; font-size:13px; outline:none; font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:700; color:#8a7a80; display:block; margin-bottom:6px;">日期</label>
+            <input type="date" id="anniv-form-date" value="${defaultDate}" style="width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid #f3d4da; border-radius:10px; font-size:13px; outline:none; font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:700; color:#8a7a80; display:block; margin-bottom:6px;">备注（可选）</label>
+            <textarea id="anniv-form-note" rows="2" placeholder="想说的话…" style="width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid #f3d4da; border-radius:10px; font-size:12.5px; outline:none; resize:vertical; font-family:inherit;"></textarea>
+          </div>
+        </div>`;
+      this.showFrostedDialog("添加纪念日", formHtml, async () => {
+        const title = (document.getElementById("anniv-form-title").value || "").trim();
+        const date = (document.getElementById("anniv-form-date").value || "").trim();
+        const note = (document.getElementById("anniv-form-note").value || "").trim();
+        if (!title) { showToast("请填写纪念日名称"); return false; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showToast("请选择日期"); return false; }
+        await db.ritual_anniversaries.add({
+          charId: Number(this.activeCharId),
+          meId: Number(this.activeMeId),
+          title: title,
+          date: date,
+          note: note,
+          createdAt: Date.now()
+        });
+        this.renderAnniversaries();
+        showToast("纪念日已添加");
+      });
+    },
+
+    async deleteAnniversary(id) {
+      if (!confirm("确定要删除这个纪念日吗？")) return;
+      try { await db.ritual_anniversaries.delete(Number(id)); } catch (e) {}
+      this.renderAnniversaries();
+      showToast("纪念日已删除");
     },
 
     buildArcTimePicker() {
@@ -1064,15 +1327,14 @@ ${historyText || "刚刚相见，倍感温润。"}`;
         const fileEl = document.getElementById("album-form-file");
 
         if (!title || !desc) {
-          alert("主题与描述绝不容许为空！");
+          await this.alertCouples("还差一点", "照片的「主题」和「描述」都要写，之后翻相册时才记得住当时的心情。");
           return false;
         }
 
         const addPhoto = async (dataUrl) => {
           let charThought = "每次看起这张合照，心里总是格外踏实。";
           try {
-            const presetId = localStorage.getItem("global_api_preset_id");
-            const api = await db.api_presets.get(Number(presetId));
+            const api = await window.apiRoutes.resolve("couples");
             const char = await db.archives.get(Number(this.activeCharId));
             if (api && char) {
               const prompt = `你现在是 [${char.name}]，用户在相册里珍藏了一张照片：“${desc}”，请写下 15 字以内的一句话对该照片的心声感想，不准说废话和括号描述。`;
@@ -1125,8 +1387,7 @@ ${historyText || "刚刚相见，倍感温润。"}`;
       showToast("正在检索你们在主时空的恋爱点记，AI构思合影中...");
 
       try {
-        const presetId = localStorage.getItem("global_api_preset_id");
-        const api = await db.api_presets.get(Number(presetId));
+        const api = await window.apiRoutes.resolve("couples");
         if (!api) throw new Error("API未配置");
 
         const char = await db.archives.get(Number(this.activeCharId));
@@ -1191,11 +1452,11 @@ ${historyText || "刚刚相见，倍感温润。"}`;
     },
 
     async deleteAlbumPhoto(id) {
-      if (confirm("确定要永久删除这张照片吗？")) {
-        await db.table('couples_albums').delete(id);
-        this.renderAlbum();
-        showToast("照片已删除");
-      }
+      const yes = await this.confirmCouples("删除这张照片？", "照片与这张照片下的留言都会一起消失，确定要删吗？", "删除");
+      if (!yes) return;
+      await db.table('couples_albums').delete(id);
+      this.renderAlbum();
+      showToast("照片已删除");
     },
 
     async renderAlbumComments(photoId, comments) {
@@ -1242,8 +1503,7 @@ ${historyText || "刚刚相见，倍感温润。"}`;
         const photo = await db.table('couples_albums').get(photoId);
         if (!photo) return;
 
-        const presetId = localStorage.getItem("global_api_preset_id");
-        const api = await db.api_presets.get(Number(presetId));
+        const api = await window.apiRoutes.resolve("couples");
         if (!api) return;
 
         const char = await db.archives.get(Number(this.activeCharId));
@@ -1318,7 +1578,7 @@ ${historyText || "刚刚相见，倍感温润。"}`;
       this.showFrostedDialog("新建手账册", formHtml, async () => {
         const name = document.getElementById("handbook-form-name").value.trim();
         if (!name) {
-          alert("手账册名称不能为空！");
+          await this.alertCouples("给它起个名字", "手账册需要一个名字，之后在书架上才找得到它。");
           return false;
         }
 
@@ -1758,33 +2018,44 @@ ${historyText || "刚刚相见，倍感温润。"}`;
 
     async triggerAiJournalWriting() {
       if (!this.selectedElement || !this.selectedElement.querySelector("textarea")) {
-        alert("请先点选画布上某一个要帮写的‘文本框’！");
+        await this.alertCouples("先选一个文本框", "点一下画布上你想让 TA 代写的那块文本框，再点这个按钮。");
         return;
       }
 
       showToast("正在检索最近总结，AI 构思手账配文中...");
 
       try {
-        const presetId = localStorage.getItem("global_api_preset_id");
-        const api = await db.api_presets.get(Number(presetId));
+        const api = await window.apiRoutes.resolve("couples");
         const char = await db.archives.get(Number(this.activeCharId));
 
         const prompt = `【手账配文代写任务】：
 你现在是 [${char?.name || '对方'}]。你们情侣空间里正在制作纪念手账。
 请为这页手账写下一句极其温暖、带有双端恋爱回忆质感的 30 字以内的小配文，不准带 Emoji 字符和任何系统指示标签！`;
 
-        const response = await fetch(`${api.url}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-          body: JSON.stringify({
-            model: api.model,
-            messages: [{ role: "user", content: prompt }]
-          })
-        });
+        let journalContent;
+        const journalMessages = [{ role: "user", content: prompt }];
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            journalContent = await window.fwCallLLM(api, journalMessages, {});
+          } catch(e) { /* fall through to original fetch */ }
+        }
+        if (journalContent === undefined) {
+          const response = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({
+              model: api.model,
+              messages: journalMessages
+            })
+          });
 
-        if (response.ok) {
-          const res = await response.json();
-          const txt = res.choices[0].message.content.trim();
+          if (response.ok) {
+            const res = await response.json();
+            journalContent = res.choices[0].message.content;
+          }
+        }
+        if (journalContent !== undefined) {
+          const txt = journalContent.trim();
           this.selectedElement.querySelector("textarea").value = txt;
           showToast("AI 手账配文写入就绪！");
         }
@@ -1794,188 +2065,355 @@ ${historyText || "刚刚相见，倍感温润。"}`;
     },
 
     // ==========================================================================
-    // 子系统 4：悄悄话 对话空间 (Whisper System)
+    // 子系统 4：私密悄悄话（v1.5.17 重做）
+    //
+    // 设计目标（用户反馈：太凌乱、注意力不集中、发起/结束逻辑混乱）：
+    //   1. 一次只聊「一期」悄悄话：屏幕上永远只有这一期的对白，历史期收起进归档。
+    //   2. 每一期都是独立上下文：AI 只看得到这一期的对白，旧的自然滑出上下文，
+    //      所以每期开口都贴合「当下」关系状态，而不是被几天前的旧话题拖住。
+    //   3. 双方都能主动发起：用户直接发消息 / 点「换个话题」；角色在空白页、
+    //      或用户主动点回复时，会自己先开口。
+    //   4. 结束逻辑收敛成「一期结束」一种：久未回应 / 聊太长 / 手动结束 / AI 收尾，
+    //      都走同一个 closeWhisperSession()，并且一定会留下一条摘要进记忆库。
     // ==========================================================================
+
+    // 一期悄悄话的空闲时限：超过这个时间没人说话，本期自动收尾，下一条消息开新的一期
+    // （用户可在「悄悄话设置」里改，默认 12 小时）
+    WHISPER_IDLE_DEFAULT_MS: 12 * 60 * 60 * 1000,
+    WHISPER_IDLE_OPTIONS: [
+      { label: '1 小时', ms: 1 * 60 * 60 * 1000 },
+      { label: '3 小时', ms: 3 * 60 * 60 * 1000 },
+      { label: '6 小时', ms: 6 * 60 * 60 * 1000 },
+      { label: '12 小时', ms: 12 * 60 * 60 * 1000 },
+      { label: '1 天', ms: 24 * 60 * 60 * 1000 },
+      { label: '3 天', ms: 3 * 24 * 60 * 60 * 1000 },
+      { label: '不自动收起', ms: 0 }
+    ],
+    // 一期最多容纳多少条对白（超过就自然翻页，避免上下文无限膨胀）
+    WHISPER_MAX_TURNS: 40,
+    // 最近多少期会作为「近况」带入新一期的开场（只带摘要，几百字，不会污染上下文）
+    WHISPER_RECENT_SESSIONS: 3,
+
+    _whisperIdleKey() {
+      return `couples_whisper_idle_${this.activeMeId}_${this.activeCharId}`;
+    },
+    // 取当前设定的空闲时限（0 = 不自动收起）
+    getWhisperIdleMs() {
+      try {
+        const raw = localStorage.getItem(this._whisperIdleKey());
+        if (raw === null || raw === undefined || raw === '') return this.WHISPER_IDLE_DEFAULT_MS;
+        const v = parseInt(raw, 10);
+        return isNaN(v) ? this.WHISPER_IDLE_DEFAULT_MS : v;
+      } catch (e) { return this.WHISPER_IDLE_DEFAULT_MS; }
+    },
+    setWhisperIdleMs(ms) {
+      try { localStorage.setItem(this._whisperIdleKey(), String(ms)); } catch (e) {}
+    },
+    _formatIdleLabel(ms) {
+      if (!ms) return '不自动收起';
+      const h = ms / 3600000;
+      if (h < 24) return `${h % 1 === 0 ? h : h.toFixed(1)} 小时`;
+      return `${Math.round(h / 24)} 天`;
+    },
+
+    // 悄悄话设置面板：一期多长自动收起 / 手动换期
+    async openWhisperSettings() {
+      const cur = this.getWhisperIdleMs();
+      let html = `<div style="display:flex; flex-direction:column; gap:10px; text-align:left;">`;
+      html += `<div style="font-size:11.5px; color:#64748b; line-height:1.6;">多久没人说话，这一期就自动收好（会写一条摘要进记忆，下一句自动开新的一期）。</div>`;
+      this.WHISPER_IDLE_OPTIONS.forEach(opt => {
+        const active = opt.ms === cur;
+        html += `<button class="couples-whisper-opt${active ? ' active' : ''}" onclick="couplesSystem.setWhisperIdleFromUI(${opt.ms})">${opt.label}${active ? ' · 当前' : ''}</button>`;
+      });
+      html += `<div style="border-top:1px dashed var(--border); margin-top:2px; padding-top:10px; display:flex; flex-direction:column; gap:8px;">
+        <button class="couples-whisper-opt" onclick="couplesSystem.letCharOpenWhisper()">让对方先开口（换一期）</button>
+        <button class="couples-whisper-opt" onclick="couplesSystem.openWhisperArchiveList()">查看往期悄悄话</button>
+      </div></div>`;
+      this.showFrostedDialog("悄悄话设置", html);
+    },
+
+    setWhisperIdleFromUI(ms) {
+      this.setWhisperIdleMs(ms);
+      const overlay = document.querySelector(".couples-dialog-overlay");
+      if (overlay) overlay.remove();
+      showToast(ms ? `这一期静下来 ${this._formatIdleLabel(ms)} 后会自己收好` : "已改为不自动收起，手动点「收好这一期」才收起");
+      this.renderWhisperChat();
+    },
+
+    // 取当前打开（未收尾）的那一期
+    async getActiveWhisperSession() {
+      try {
+        const list = await db.table('couples_whisper_topics')
+          .where('charId').equals(Number(this.activeCharId))
+          .toArray();
+        const open = list.filter(t => !t.closed && t.archived !== 1);
+        if (open.length === 0) return null;
+        // 兼容旧数据：老话题没有 sessionId，只有 topicId
+        open.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+        const top = open[open.length - 1];
+        if (top.sessionId == null) top.sessionId = top.id;
+        return top;
+      } catch (e) {
+        console.warn("[悄悄话] 读取当前期失败", e);
+        return null;
+      }
+    },
+
+    isWhisperSessionIdle(session, now) {
+      if (!session) return true;
+      const idleMs = this.getWhisperIdleMs();
+      if (!idleMs) return false;   // 用户设成「不自动收起」
+      const last = session.lastMessageAt || session.startTime || 0;
+      return (now - last) > idleMs;
+    },
+
+    // 开一期新的悄悄话（只建元数据，不代写台词；开场白由 AI 或用户自己说）
+    async openWhisperSession(initiator) {
+      const now = Date.now();
+      const who = initiator === 'user' ? 'user' : 'char';
+      const title = who === 'user' ? '（等你说第一句）' : '（等对方开口）';
+      const id = await db.table('couples_whisper_topics').add({
+        charId: Number(this.activeCharId),
+        meId: Number(this.activeMeId),
+        topicTitle: title,
+        initiator: who,
+        startTime: now,
+        lastMessageAt: now,
+        endTime: 0,
+        archived: 0,
+        closed: 0,
+        msgCount: 0,
+        summary: '',
+        sessionId: null
+      });
+      try { await db.table('couples_whisper_topics').update(id, { sessionId: id }); } catch (e) {}
+      const session = await db.table('couples_whisper_topics').get(id);
+      if (session) session.sessionId = id;
+      return session;
+    },
+
+    // 取「当前应该继续聊的那一期」：没有就开一期；已经空闲太久就先收尾再开新的一期
+    async ensureWhisperSession(initiator) {
+      const now = Date.now();
+      let session = await this.getActiveWhisperSession();
+      if (session && this.isWhisperSessionIdle(session, now)) {
+        await this.closeWhisperSession(session.id, true);
+        session = null;
+      }
+      if (!session) session = await this.openWhisperSession(initiator || 'user');
+      return session;
+    },
+
+    // 取某一期里的对白（按时间正序）；兼容只有 topicId 的旧数据
+    async listWhisperMessages(session) {
+      if (!session) return [];
+      const sid = Number(session.sessionId || session.id);
+      const all = await db.table('couples_whispers')
+        .where('charId').equals(Number(this.activeCharId))
+        .sortBy('timestamp');
+      return all.filter(m => {
+        if (sid) return Number(m.sessionId) === sid || (!m.sessionId && Number(m.topicId) === sid);
+        return Number(m.topicId) === Number(session.id);
+      });
+    },
+
+    // 本期对白条数（用于「第几句 / 是否该翻页」）
+    async countWhisperMessages(session) {
+      const msgs = await this.listWhisperMessages(session);
+      return msgs.filter(m => !m.sysNote).length;
+    },
+
+    // 收尾一期：写摘要进记忆库 + 标记该期消息归档。所有结束路径都走这里。
+    async closeWhisperSession(sessionId, isAuto = false, silent = false) {
+      try {
+        const session = await db.table('couples_whisper_topics').get(Number(sessionId));
+        if (!session || session.closed === 1 || session.archived === 1) return session;
+        const msgs = await this.listWhisperMessages(session);
+        const realMsgs = msgs.filter(m => !m.sysNote && m.content);
+
+        let summary = '';
+        if (realMsgs.length > 0) {
+          summary = await this.summarizeWhisperTopic(session, realMsgs);
+        }
+
+        // 写入记忆库（关系类摘要）：新一期开场只带摘要，不带旧对白，天然不污染上下文
+        if (summary) {
+          let sessId = Number(this.activeSessionId) || 0;
+          if (!sessId) {
+            const sessList = await db.sessions.where('userId').equals(Number(this.activeMeId)).toArray();
+            const targetSess = sessList.find(s => s.charId === Number(this.activeCharId));
+            sessId = targetSess ? targetSess.id : 0;
+          }
+          if (sessId) {
+            try {
+              await db.summaries.add({
+                sessionId: sessId,
+                startRound: 0,
+                endRound: 0,
+                content: `【情侣空间·悄悄话】第「${session.topicTitle || '未命名'}」期（${session.initiator === 'user' ? '我主动开口' : '对方主动开口'}）：${summary}`,
+                category: 'relationship',
+                keywords: JSON.stringify(['悄悄话', '情侣空间', session.topicTitle || '']),
+                timestamp: Date.now(),
+                vector: null
+              });
+            } catch (e) { console.warn("[悄悄话] 摘要入库失败", e); }
+          }
+        }
+
+        await db.table('couples_whisper_topics').update(session.id, {
+          closed: 1,
+          archived: 1,
+          endTime: Date.now(),
+          msgCount: realMsgs.length,
+          summary: summary || (realMsgs.length ? '(总结失败)' : '(空白一期，未留下内容)')
+        });
+        for (const m of msgs) {
+          try { await db.table('couples_whispers').update(m.id, { archived: 1 }); } catch (e) {}
+        }
+
+        if (!silent) {
+          if (realMsgs.length === 0) showToast("这一期没有留下对白，已合上");
+          else if (isAuto) showToast("这一期悄悄话已收尾，摘要已记进你们的记忆");
+          else showToast("这一期悄悄话已收好，摘要已记进记忆");
+        }
+        return session;
+      } catch (e) {
+        console.error("[悄悄话] 收尾失败", e);
+        return null;
+      }
+    },
+
+    // 兼容入口：旧的 archiveTopic(同样语义) 继续可用
+    async archiveTopic(topicId, isAuto = false) {
+      return this.closeWhisperSession(topicId, isAuto);
+    },
+
     async renderWhisperChat() {
       const flow = document.getElementById("couples-whisper-messages-flow");
       if (!flow) return;
       flow.innerHTML = "";
 
-      // 先做"3天自动归档"巡检：把超过 3 天未结束的话题自动归档并总结进记忆库
-      await this.autoArchiveExpiredTopics();
+      // 没有确定角色时什么都不做：避免建出 charId 为 NaN 的脏数据
+      if (!this.activeCharId || isNaN(Number(this.activeCharId))) {
+        const hint = document.createElement("div");
+        hint.className = "couples-whisper-empty";
+        hint.innerHTML = '<div class="cwe-title">还没有选择共度的人</div><div class="cwe-sub">先在最上方切换到一位角色</div>';
+        flow.appendChild(hint);
+        const bar0 = document.getElementById("couples-whisper-topic-status-bar");
+        if (bar0) bar0.style.display = "none";
+        return;
+      }
 
-      // 只渲染未归档的悄悄话消息（archived !== 1）
-      const allMsgs = await db.table('couples_whispers')
-        .where('charId').equals(Number(this.activeCharId))
-        .sortBy('timestamp');
-      const msgs = allMsgs.filter(m => m.archived !== 1);
+      let session = await this.getActiveWhisperSession();
+      const now = Date.now();
 
-      if (msgs.length === 0) {
-        flow.innerHTML = `<p style="text-align:center; font-size:11px; color:#94a3b8; padding:32px 0;">这是一个只属于你们两人的私密夜聊空间。点击右上角可以发起一个‘高黏度话题’来互动。对方也可能主动发起一个话题来找你聊。</p>`;
+      // 空闲太久：先把上一期收好（静默），让用户看到的永远是「新的一期」
+      if (session && this.isWhisperSessionIdle(session, now)) {
+        await this.closeWhisperSession(session.id, true, true);
+        session = null;
+      }
+
+      this._whisperSession = session;
+      let msgs = session ? await this.listWhisperMessages(session) : [];
+      msgs = msgs.filter(m => !m.sysNote);
+
+      if (!session || msgs.length === 0) {
+        // 空态：干净的一句话 + 一个明确的邀请，不堆文案
+        const empty = document.createElement("div");
+        empty.className = "couples-whisper-empty";
+        empty.innerHTML =
+          '<div class="cwe-title">现在是只属于你们两个人的时间</div>' +
+          '<div class="cwe-sub">说第一句，或者让对方先开口</div>';
+        flow.appendChild(empty);
+        if (!this._whisperScheduledCharOpen) {
+          this._whisperScheduledCharOpen = true;
+          setTimeout(() => {
+            this._whisperScheduledCharOpen = false;
+            if (this.currentSubPage === 'whisper') this.triggerWhisperReply({ opener: true });
+          }, 900);
+        }
       } else {
+        let prevTs = 0;
+        let prevSender = null;
         msgs.forEach(m => {
+          // 超过 10 分钟换一轮，插一条极淡的时间分隔，让注意力有节奏
+          if (m.timestamp - prevTs > 10 * 60 * 1000) {
+            const sep = document.createElement("div");
+            sep.className = "couples-whisper-timesep";
+            sep.innerText = this.formatWhisperTime(m.timestamp);
+            flow.appendChild(sep);
+            prevSender = null;
+          }
           const div = document.createElement("div");
           div.className = `couples-whisper-card ${m.senderType === 'user' ? 'user' : 'char'}`;
+          if (prevSender === m.senderType) div.classList.add("tight");
           div.innerText = m.content;
-
+          div.dataset.msgId = m.id;
           div.ondblclick = (e) => {
             e.preventDefault();
             this.triggerWhisperEditDialog(m.id, m.content);
           };
-
           flow.appendChild(div);
+          prevTs = m.timestamp;
+          prevSender = m.senderType;
         });
       }
 
-      // 同步当前活动话题状态条（优先从 topics 表读取活动话题，向后兼容 localStorage）
-      const bar = document.getElementById("couples-whisper-topic-status-bar");
-      let activeTopic = await this.getActiveTopic();
-      if (activeTopic) {
-        this.whisperTopicActive = true;
-        this.activeTopicDesc = activeTopic.topicTitle;
-        this.whisperTopicInitiator = activeTopic.initiator || 'char';
-        this.activeTopicId = activeTopic.id;
-        this.activeTopicStartTime = activeTopic.startTime;
-        if (bar) {
-          bar.style.display = "flex";
-          const elapsed = Date.now() - (activeTopic.startTime || Date.now());
-          const remainMs = Math.max(0, 3 * 24 * 3600 * 1000 - elapsed);
-          const remainDays = Math.ceil(remainMs / (24 * 3600 * 1000));
-          const remainLabel = remainMs > 0 ? `· 剩余约 ${remainDays} 天自动归档` : '· 即将自动归档';
-          document.getElementById("couples-whisper-topic-title").innerText = `正在探讨：${activeTopic.topicTitle} (${activeTopic.initiator === 'user' ? '由我发起' : '由对方发起'} ${remainLabel})`;
-          // 结束话题按钮改为"归档并结束"
-          const endBtn = document.getElementById("btn-couples-whisper-topic-end");
-          if (endBtn) endBtn.innerText = "归档并结束";
-        }
-      } else {
-        this.whisperTopicActive = false;
-        this.activeTopicId = null;
-        if (bar) bar.style.display = "none";
-      }
-
-      // 渲染底部"历史归档"入口按钮（仅当存在已归档话题时显示）
+      this.renderWhisperSessionBar(session, msgs.length);
       await this.renderWhisperArchiveEntry();
-
-      flow.scrollTop = flow.scrollHeight;
+      requestAnimationFrame(() => { flow.scrollTop = flow.scrollHeight; });
     },
 
-    // 获取当前未归档的活动话题（从 topics 表读，向后兼容旧 localStorage 主题）
-    async getActiveTopic() {
-      try {
-        const topics = await db.table('couples_whisper_topics')
-          .where('charId').equals(Number(this.activeCharId))
-          .and(t => t.archived !== 1)
-          .sortBy('startTime');
-        if (topics.length > 0) {
-          const t = topics[topics.length - 1];
-          return t;
-        }
-      } catch(e) { console.warn("读取 whisper topics 失败", e); }
-      // 向后兼容：旧 localStorage 主题
-      const topicStateKey = `couples_whisper_topic_state_${this.activeMeId}_${this.activeCharId}`;
-      const topicTitle = localStorage.getItem(topicStateKey);
-      if (topicTitle) {
-        const initiatorKey = `couples_whisper_topic_initiator_${this.activeMeId}_${this.activeCharId}`;
-        const topicInitiator = localStorage.getItem(initiatorKey) || 'char';
-        // 迁移到 topics 表
-        const newId = await db.table('couples_whisper_topics').add({
-          charId: Number(this.activeCharId),
-          meId: Number(this.activeMeId),
-          topicTitle: topicTitle,
-          initiator: topicInitiator,
-          startTime: Date.now(),
-          endTime: 0,
-          archived: 0,
-          summary: ''
-        });
-        localStorage.removeItem(topicStateKey);
-        localStorage.removeItem(initiatorKey);
-        return await db.table('couples_whisper_topics').get(newId);
+    // 顶部的「本期」细条：只说清三件事——谁先开口、聊到第几句、多久没回应会收起
+    renderWhisperSessionBar(session, count) {
+      const bar = document.getElementById("couples-whisper-topic-status-bar");
+      const titleEl = document.getElementById("couples-whisper-topic-title");
+      if (!bar || !titleEl) return;
+      if (!session) {
+        bar.style.display = "none";
+        return;
       }
-      return null;
+      const idleLabel = this._formatIdleLabel(this.getWhisperIdleMs());
+      const who = session.initiator === 'user' ? '你主动开口' : '对方主动开口';
+      titleEl.innerText = count > 0
+        ? `${who} · 已经 ${count} 句 · 静下来 ${idleLabel} 自动收起`
+        : `${who} · 等第一句 · 静下来 ${idleLabel} 自动收起`;
+      bar.style.display = "flex";
     },
 
-    // 3天自动归档巡检：超过 3 天的活动话题自动归档 + 总结
+    formatWhisperTime(ts) {
+      const d = new Date(ts || Date.now());
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      if (sameDay) return `今天 ${hh}:${mm}`;
+      return `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`;
+    },
+
+    // 兼容旧调用：取当前期（旧名 getActiveTopic）
+    async getActiveTopic() {
+      return this.getActiveWhisperSession();
+    },
+
+    // 兼容旧调用：旧版「3 天自动归档」巡检，现在由 ensureWhisperSession 的空闲判定接管
     async autoArchiveExpiredTopics() {
       try {
-        const THREE_DAYS = 3 * 24 * 3600 * 1000;
-        const now = Date.now();
-        const activeTopics = await db.table('couples_whisper_topics')
+        const open = await db.table('couples_whisper_topics')
           .where('charId').equals(Number(this.activeCharId))
-          .and(t => t.archived !== 1)
           .toArray();
-        for (const t of activeTopics) {
-          if (t.startTime && (now - t.startTime) >= THREE_DAYS) {
-            await this.archiveTopic(t.id, true);
+        for (const t of open.filter(x => !x.closed && x.archived !== 1)) {
+          if (this.isWhisperSessionIdle(t, Date.now())) {
+            await this.closeWhisperSession(t.id, true, true);
           }
         }
-      } catch(e) { console.warn("自动归档巡检失败", e); }
-    },
-
-    // 归档指定话题：总结消息 -> 写入记忆库 summaries -> 标记话题与消息为已归档
-    async archiveTopic(topicId, isAuto = false) {
-      try {
-        const topic = await db.table('couples_whisper_topics').get(topicId);
-        if (!topic) return;
-        // 拉取该话题下所有消息
-        const allMsgs = await db.table('couples_whispers')
-          .where('charId').equals(Number(this.activeCharId))
-          .sortBy('timestamp');
-        const topicMsgs = allMsgs.filter(m => Number(m.topicId) === Number(topicId));
-        if (topicMsgs.length === 0) {
-          // 空话题直接归档
-          await db.table('couples_whisper_topics').update(topicId, { archived: 1, endTime: Date.now(), summary: '(空话题)' });
-          return;
-        }
-
-        // 调用 LLM 总结这段悄悄话
-        const summary = await this.summarizeWhisperTopic(topic, topicMsgs);
-
-        // 写入记忆库 db.summaries（情侣空间会话复用主会话 sessionId，若无则用 0）
-        let sessId = Number(this.activeSessionId) || 0;
-        if (!sessId) {
-          // 尝试查找该角色的主会话
-          const sessList = await db.sessions.where('userId').equals(Number(this.activeMeId)).toArray();
-          const targetSess = sessList.find(s => s.charId === Number(this.activeCharId));
-          sessId = targetSess ? targetSess.id : 0;
-        }
-        if (sessId && summary) {
-          await db.summaries.add({
-            sessionId: sessId,
-            startRound: 0,
-            endRound: 0,
-            content: `【情侣空间·悄悄话归档】话题《${topic.topicTitle}》（${topic.initiator === 'user' ? '我发起' : '对方发起'}）：${summary}`,
-            category: 'relationship',
-            keywords: JSON.stringify(['悄悄话', '情侣空间', topic.topicTitle]),
-            timestamp: Date.now(),
-            vector: null
-          });
-        }
-
-        // 标记话题为已归档
-        await db.table('couples_whisper_topics').update(topicId, {
-          archived: 1,
-          endTime: Date.now(),
-          summary: summary || '(总结失败)'
-        });
-        // 标记该话题下所有消息为已归档
-        for (const m of topicMsgs) {
-          await db.table('couples_whispers').update(m.id, { archived: 1 });
-        }
-
-        if (!isAuto) showToast("悄悄话话题已归档，总结已写入记忆库");
-        else showToast(`话题《${topic.topicTitle}》已达 3 天，已自动归档并总结`);
-      } catch(e) {
-        console.error("归档话题失败", e);
-        showToast("归档失败: " + e.message);
-      }
+      } catch (e) { console.warn("[悄悄话] 空闲巡检失败", e); }
     },
 
     // 调用 LLM 总结一段悄悄话话题
     async summarizeWhisperTopic(topic, topicMsgs) {
       try {
-        const presetId = localStorage.getItem("global_api_preset_id");
-        const api = await db.api_presets.get(Number(presetId));
+        const api = await window.apiRoutes.resolve("couples");
         if (!api) return "";
 
         const char = await db.archives.get(Number(this.activeCharId));
@@ -1998,18 +2436,28 @@ ${historyText || "刚刚相见，倍感温润。"}`;
 对话内容：
 ${historyText}`;
 
-        const response = await fetch(`${api.url}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-          body: JSON.stringify({
-            model: api.model,
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.4
-          })
-        });
-        if (!response.ok) return "";
-        const res = await response.json();
-        return (res.choices?.[0]?.message?.content || "").trim();
+        // 与其它模块一致：优先走统一 LLM 通道（带路由/降级），失败再直接 fetch
+        let summaryText;
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            summaryText = await window.fwCallLLM(api, [{ role: "user", content: prompt }], { temperature: 0.4 });
+          } catch (e) { summaryText = undefined; }
+        }
+        if (summaryText === undefined) {
+          const response = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({
+              model: api.model,
+              messages: [{ role: "user", content: prompt }],
+              temperature: 0.4
+            })
+          });
+          if (!response.ok) return "";
+          const res = await response.json();
+          summaryText = res.choices?.[0]?.message?.content;
+        }
+        return String(summaryText || "").trim();
       } catch(e) {
         console.warn("总结悄悄话失败", e);
         return "";
@@ -2033,15 +2481,18 @@ ${historyText}`;
       if (!entryBar) {
         entryBar = document.createElement("div");
         entryBar.id = "couples-whisper-archive-entry";
-        entryBar.style.cssText = "text-align:center; padding:10px; margin-top:12px; border-top:1px dashed #cbd5e1;";
         flow.appendChild(entryBar);
       } else {
         entryBar.innerHTML = "";
       }
+      // 归档入口放在消息流顶部：翻完这一期往下走，往期在更上面，符合「往上翻历史」的直觉
+      flow.insertBefore(entryBar, flow.firstChild);
       const btn = document.createElement("button");
-      btn.className = "btn btn-outline";
-      btn.style.cssText = "font-size:11px; padding:6px 14px; border-radius:8px; color:#64748b; border-color:#cbd5e1;";
-      btn.innerText = `📦 历史归档 (${archivedTopics.length})`;
+      btn.className = "couples-whisper-archive-btn";
+      btn.innerHTML =
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px; margin-right:5px;">' +
+        '<path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>' +
+        `往期悄悄话 · ${archivedTopics.length}`;
       btn.onclick = () => this.openWhisperArchiveList();
       entryBar.appendChild(btn);
     },
@@ -2059,23 +2510,29 @@ ${historyText}`;
         listHtml += `<p style="text-align:center; color:#94a3b8; font-size:12px; padding:20px 0;">暂无已归档的悄悄话话题</p>`;
       } else {
         topics.forEach(t => {
-          const timeStr = t.endTime ? new Date(t.endTime).toLocaleString() : '未知';
+          const timeStr = t.endTime ? this.formatWhisperTime(t.endTime) : '未知时间';
+          const countStr = t.msgCount ? `${t.msgCount} 句` : '';
           listHtml += `
-            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; text-align:left;">
-              <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">${this.escapeHtmlC(t.topicTitle || '未命名话题')}</div>
-              <div style="font-size:10px; color:#64748b; margin-bottom:6px;">${t.initiator === 'user' ? '我发起' : '对方发起'} · 归档于 ${timeStr}</div>
-              <div style="font-size:11px; color:#475569; line-height:1.5; background:#fff; padding:8px; border-radius:6px; border-left:3px solid #a78bfa;">${this.escapeHtmlC(t.summary || '(无总结)')}</div>
+            <div class="couples-whisper-archive-item">
+              <div class="cwai-head">
+                <span class="cwai-title">${window.escapeHtml(t.topicTitle || '未命名的一期')}</span>
+                <span class="cwai-time">${timeStr}${countStr ? ' · ' + countStr : ''}</span>
+              </div>
+              <div class="cwai-meta">${t.initiator === 'user' ? '我主动开口' : '对方主动开口'}</div>
+              <div class="cwai-summary">${window.escapeHtml(t.summary || '(没有留下摘要)')}</div>
             </div>
           `;
         });
       }
       listHtml += `</div>`;
 
-      this.showFrostedDialog("悄悄话历史归档", listHtml);
-      const overlay = document.querySelector(".couples-dialog-overlay");
+      const overlay = this.showFrostedDialog("悄悄话历史归档", listHtml);
       if (overlay) {
-        overlay.querySelector("#btn-couples-dialog-cancel").style.display = "none";
-        overlay.querySelector("#btn-couples-dialog-confirm").style.display = "none";
+        // 只读弹窗：藏掉取消/确认，但右上角 X 与点遮罩仍可关闭（曾经这里被彻底卡死）
+        const cancelBtn = overlay.querySelector("#btn-couples-dialog-cancel");
+        const confirmBtn = overlay.querySelector("#btn-couples-dialog-confirm");
+        if (cancelBtn) cancelBtn.style.display = "none";
+        if (confirmBtn) confirmBtn.style.display = "none";
       }
     },
 
@@ -2083,6 +2540,80 @@ ${historyText}`;
     escapeHtmlC(str) {
       if (!str) return '';
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+
+    // ==========================================================================
+    // 素材贴纸库存储（v1.5.17：迁到 IndexedDB，localStorage 只有约 5MB）
+    //   每块贴纸是一张压缩后的 base64 图（~200-400KB），十几块就会撞上 localStorage
+    //   配额，setItem 抛异常而调用方没接 → 表现为「贴纸库时好时坏 / 上传丢图」。
+    // ==========================================================================
+    _sharedAssetsKey: 'couples_shared_assets',
+    _sharedAssetsCache: null,
+
+    // 同步读：给「同步渲染路径」用（点按弹层里来不及 await）。缓存由 loadSharedAssets 预热。
+    _sharedAssetsSync() {
+      if (Array.isArray(this._sharedAssetsCache)) return this._sharedAssetsCache;
+      const legacy = this._localAssetsRead();
+      this._sharedAssetsCache = legacy;
+      return legacy;
+    },
+
+    _localAssetsRead() {
+      try { return JSON.parse(localStorage.getItem(this._sharedAssetsKey)) || []; } catch (e) { return []; }
+    },
+
+    // 读贴纸库：优先 IndexedDB 的 assets 表，首次自动把 localStorage 的旧数据搬过去
+    async loadSharedAssets() {
+      if (typeof window.tileAssetGet === 'function') {
+        try {
+          const stored = await window.tileAssetGet(this._sharedAssetsKey);
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed)) {
+                // 已经搬过一次：清掉 localStorage 里的旧副本，避免两份数据打架
+                try { localStorage.removeItem(this._sharedAssetsKey); } catch (e) {}
+                this._sharedAssetsCache = parsed;
+                return parsed;
+              }
+            } catch (e) {}
+          }
+          const legacy = this._localAssetsRead();
+          if (legacy.length > 0) {
+            await this.saveSharedAssets(legacy);
+            return legacy;
+          }
+          this._sharedAssetsCache = [];
+          return [];
+        } catch (e) {
+          console.warn("[情侣空间] 贴纸库读取 IndexedDB 失败，回落 localStorage", e);
+        }
+      }
+      const legacy2 = this._localAssetsRead();
+      this._sharedAssetsCache = legacy2;
+      return legacy2;
+    },
+
+    // 写贴纸库：优先 IndexedDB；不可用时回落 localStorage，并且**明确报错**而不是静默吞掉
+    async saveSharedAssets(list) {
+      const arr = Array.isArray(list) ? list : [];
+      this._sharedAssetsCache = arr;
+      if (typeof window.tileAssetSet === 'function') {
+        try {
+          await window.tileAssetSet(this._sharedAssetsKey, JSON.stringify(arr));
+          return { ok: true, store: 'idb' };
+        } catch (e) {
+          console.warn("[情侣空间] 贴纸库写入 IndexedDB 失败，回落 localStorage", e);
+        }
+      }
+      try {
+        localStorage.setItem(this._sharedAssetsKey, JSON.stringify(arr));
+        return { ok: true, store: 'local' };
+      } catch (e) {
+        console.error("[情侣空间] 贴纸库写入失败", e);
+        if (typeof showToast === 'function') showToast("素材存不进去了：本地空间已满，先去「设置 - 数据管理 - 图片管理」清理一些图片");
+        return { ok: false, store: 'none', error: e };
+      }
     },
 
     triggerWhisperEditDialog(msgId, content) {
@@ -2096,9 +2627,7 @@ ${historyText}`;
         </div>
       `;
 
-      this.showFrostedDialog("管理私密悄悄话", formHtml, null);
-
-      const overlay = document.querySelector(".couples-dialog-overlay");
+      const overlay = this.showFrostedDialog("管理私密悄悄话", formHtml, null);
       
       overlay.querySelector("#btn-whisper-action-save").onclick = async () => {
         const val = document.getElementById("whisper-edit-textarea").value.trim();
@@ -2110,12 +2639,12 @@ ${historyText}`;
       };
 
       overlay.querySelector("#btn-whisper-action-delete").onclick = async () => {
-        if (confirm("确定要永久粉碎这条悄悄话记录吗？")) {
-          await db.table('couples_whispers').delete(msgId);
-          overlay.remove();
-          this.renderWhisperChat();
-          showToast("悄悄话已粉碎删除");
-        }
+        const yes = await this.confirmCouples("粉碎这条悄悄话？", "这一句会从你们的悄悄话里彻底消失，无法找回。", "粉碎删除");
+        if (!yes) return;
+        await db.table('couples_whispers').delete(msgId);
+        overlay.remove();
+        this.renderWhisperChat();
+        showToast("悄悄话已粉碎删除");
       };
 
       overlay.querySelector("#btn-couples-dialog-cancel").style.display = "none";
@@ -2127,9 +2656,9 @@ ${historyText}`;
       const text = input ? input.value.trim() : "";
       if (!text) return;
 
-      // 绑定当前活动话题 id（若有），便于归档时按话题切分
-      const activeTopic = await this.getActiveTopic();
-      const topicId = activeTopic ? activeTopic.id : null;
+      // 拿「当前这一期」：没有就开一期（由我发起），本来就是我主动开口
+      const session = await this.ensureWhisperSession('user');
+      const sid = Number(session.sessionId || session.id);
 
       await db.table('couples_whispers').add({
         charId: Number(this.activeCharId),
@@ -2137,88 +2666,119 @@ ${historyText}`;
         senderType: "user",
         content: text,
         timestamp: Date.now(),
-        topicId: topicId,
+        topicId: Number(session.id),
+        sessionId: sid,
         archived: 0
       });
+      await this.touchWhisperSession(session, text);
 
-      input.value = "";
-      this.renderWhisperChat();
+      if (input) { input.value = ""; input.style.height = ""; }
+      await this.renderWhisperChat();
+
+      // 用户主动说了话 → 对方自然接话（不需要再点一次按钮）
+      await this.triggerWhisperReply();
     },
 
-    async triggerWhisperReply() {
+    // 更新这一期的活跃时间 / 条数 / 标题（标题取第一句有内容的话）
+    async touchWhisperSession(session, firstText) {
+      if (!session) return;
+      const patch = { lastMessageAt: Date.now() };
+      const count = (Number(session.msgCount) || 0) + 1;
+      patch.msgCount = count;
+      const title = String(session.topicTitle || '');
+      const placeholder = title.indexOf('（等') === 0 || !title;
+      if (placeholder && firstText) {
+        patch.topicTitle = firstText.replace(/\s+/g, ' ').slice(0, 18) + (firstText.length > 18 ? '…' : '');
+      }
+      try { await db.table('couples_whisper_topics').update(Number(session.id), patch); } catch (e) {}
+      Object.assign(session, patch);
+    },
+
+    // opts.opener = true：这一轮是要「主动开口」（空白页 / 新一期），而不是接话
+    async triggerWhisperReply(opts) {
+      const options = opts || {};
       const flow = document.getElementById("couples-whisper-messages-flow");
+      if (!flow) return;
+      const btnReply = document.getElementById("btn-couples-whisper-reply");
+      if (btnReply && btnReply.disabled) return;   // 正在生成，避免连点
+      if (btnReply) btnReply.disabled = true;
+
+      const oldBtnHTML = btnReply ? btnReply.innerHTML : null;
+      if (btnReply) btnReply.innerHTML = '<svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3" fill="#f87171"/></svg>';
+
       const loader = document.createElement("div");
-      loader.className = "couples-whisper-card char";
-      loader.innerText = "（对方正在极度深情地写着悄悄话...）";
+      loader.className = "couples-whisper-card char is-typing";
+      loader.innerText = options.opener ? "（对方正在想着怎么开口...）" : "（对方正在写悄悄话...）";
       flow.appendChild(loader);
       flow.scrollTop = flow.scrollHeight;
 
-      // 禁用回复按键，防止连点假死
-      const btnReply = document.getElementById("btn-couples-whisper-reply");
-      if (btnReply) btnReply.disabled = true;
-
-      let parts = []; // 声明在函数顶级作用域，防止 try 块作用域穿透与 ReferenceError
+      const restoreBtn = () => {
+        if (btnReply) {
+          btnReply.disabled = false;
+          if (oldBtnHTML) btnReply.innerHTML = oldBtnHTML;
+        }
+      };
 
       try {
-        const presetId = localStorage.getItem("global_api_preset_id");
-        const api = await db.api_presets.get(Number(presetId));
+        const api = await window.apiRoutes.resolve("couples");
         if (!api) throw new Error("API未配置");
 
         const char = await db.archives.get(Number(this.activeCharId));
         const user = await db.archives.get(Number(this.activeMeId));
-
         const charName = char?.name || "对方";
         const userName = user?.name || "我";
 
-        // 关键修复"不读我的话"：只拉取当前活动话题下的消息（未归档），
-        // 而不是把所有悄悄话混在一起取末 8 条（之前会把别的话题内容当上下文）
-        const activeTopic = await this.getActiveTopic();
-        const currentTopicId = activeTopic ? activeTopic.id : null;
-        const allMsgs = await db.table('couples_whispers')
-          .where('charId').equals(Number(this.activeCharId))
-          .sortBy('timestamp');
-        // 优先取当前话题下消息；若无活动话题，则取所有未归档消息
-        let contextMsgs;
-        if (currentTopicId) {
-          contextMsgs = allMsgs.filter(m => Number(m.topicId) === Number(currentTopicId) && m.archived !== 1);
-        } else {
-          contextMsgs = allMsgs.filter(m => m.archived !== 1);
+        // 这一期：既定的当前期，或（opener 时）开一期由对方发起
+        let session = await this.getActiveWhisperSession();
+        if (!session) session = await this.openWhisperSession(options.opener ? 'char' : 'char');
+        if (this.isWhisperSessionIdle(session, Date.now())) {
+          await this.closeWhisperSession(session.id, true, true);
+          session = await this.openWhisperSession('char');
         }
-        // 至少带上最近 12 条以保证连贯，但严格限定在当前话题内
-        contextMsgs = contextMsgs.slice(-12);
+
+        // 上下文 = 只取这一期的对白（旧的一期已归档，天然不进来）
+        const sessionMsgs = await this.listWhisperMessages(session);
+        const contextMsgs = sessionMsgs.filter(m => !m.sysNote).slice(-12);
+        const isOpener = options.opener === true || contextMsgs.length === 0;
 
         let historyText = "";
         contextMsgs.forEach(m => {
           const who = m.senderType === 'user' ? userName : charName;
           historyText += `${who}: ${m.content}\n`;
         });
-        if (!historyText) historyText = "(对话刚开始，还没有历史)";
+        if (!historyText) historyText = "(这一期还没有人说话)";
 
-        let topicPrompt = "";
-        if (activeTopic) {
-          const initByChar = activeTopic.initiator === 'char';
-          topicPrompt = `\n【当前处于共同探讨高粘度话题阶段："${activeTopic.topicTitle}"】：
-- 这个话题是由${initByChar ? '你（对方 ' + charName + '）' : '用户（' + userName + '）'}主动发起的。${initByChar ? '相当于你对用户表达了这一想法（或期望用户有所回应），你可以用撒娇、傲娇、受挫或极度倾诉欲的语气拉扯，引导用户来温和地哄你、安慰你或向你表达心意。' : '相当于用户向你倾诉了他们的脆弱，需要你来哄哄、体贴并宠溺他们。你必须主动、耐心地包容用户的情绪，展现出无微不至的偏爱、心疼与温柔哄溺。'}
-- 你本轮的所有心声输出，必须紧密围绕这个特定话题展开，严格承接用户上一句说的话回应，不要自顾自跑题。
-- 如果对方还没有哄好你 / 用户的情绪还没有被你抚平，请继续情绪拉扯，不要敷衍收尾。
-- 在回复末尾，请加上针对当前话题的满意度判定（0-100），必须单独占一行：
-[SATISFACTION] 满意度值`;
-        }
+        // 最近几期的摘要作为「近况」带入，只给摘要不给原文，避免旧话题拖住当下
+        let recentText = "";
+        try {
+          const recent = await db.table('couples_whisper_topics')
+            .where('charId').equals(Number(this.activeCharId))
+            .toArray();
+          const done = recent
+            .filter(t => (t.closed === 1 || t.archived === 1) && t.summary && t.summary.indexOf('(空白') !== 0)
+            .sort((a, b) => (b.endTime || 0) - (a.endTime || 0))
+            .slice(0, this.WHISPER_RECENT_SESSIONS);
+          if (done.length) {
+            recentText = "\n【你们最近几期悄悄话的近况（仅供你了解此刻关系的温度，不要复述、不要当作当前对话）】：\n"
+              + done.map(t => `- ${t.summary}`).join("\n") + "\n";
+          }
+        } catch (e) {}
 
-        // 主动发起/结束话题的指令说明（双方都可触发，与线上特殊格式同源）
-        const commandInstruction = `
-【悄悄话话题指令（你可主动使用，与线上特殊消息格式同源）】：
-1. 当你想要主动开启一个新的高粘度悄悄话话题时（而不是被动等用户发起），请在你的回复【最末尾】单独追加一行：
-[WHISPER_TOPIC_START]{"title":"你想聊的话题标题","initiator":"char"}
-   - title：话题标题，须贴合你此刻的心境与人设（如"今天一直在想我们第一次吵架"）
-   - initiator：固定填 "char"（表示由你发起）
-   - 注意：只有当前没有活动话题时才能发起；若已有活动话题，请先正常对话。
-2. 当你觉得这个话题已经聊到圆满 / 情绪已经释放完毕 / 你想主动收尾时，请在你的回复【最末尾】单独追加一行：
-[WHISPER_TOPIC_END]{}
-   - 触发后该话题会被归档并自动总结进长期记忆库，然后开始下一段。
-3. 这些指令行不会展示给用户看，只用于系统识别。指令行之外的你正常心声台词照常输出。`;
+        const initiatorLine = session.initiator === 'user'
+          ? `这一期是 ${userName} 先开的口，正在等你回应。`
+          : `这一期是你先开的口。`;
 
-        const prompt = `【悄悄话灵魂交流任务】：
+        const openerInstruction = isOpener
+          ? `\n【本轮任务：你先开口】
+- 现在这一期还没有人说话，${session.initiator === 'user' ? '是 ' + userName + ' 先来找的你' : '由你主动先开口'}。
+- 请写 1 到 2 句你此刻真正想说的话，作为这一期的开场：可以是一个念头、一件今天发生的小事、一点没来由的情绪、一句只对这个人才会说的话。
+- 严禁套话（"在吗""今天过得怎么样"这类一律不要），要有你自己的语气与人设细节。
+- 不要说"我们聊聊某某话题"这种主持人式的话。`
+          : `\n【本轮任务：接住对方】
+- 必须紧扣对白历史里 ${userName} 最近说的话回应，每一句都要有情绪反馈，不要self自顾自。
+- 你可以说 1 到 2 句简短、有拉扯感、情绪递进的话。`;
+
+        const prompt = `【悄悄话 · 只属于你们两人的私密时刻】：
 你现在需要严格、深度地扮演 [${charName}]。
 在你们的关系中，【你首先是你自己（必须坚定坚守你的本性与核心人设，切勿媚俗或一味迎合，保持你特有的说话语调与内心骄傲）】，其次你才是对方的爱人。
 
@@ -2226,126 +2786,110 @@ ${historyText}`;
 ${char?.persona || "一个普通人"}
 
 - 这里是只属于你和 [${userName}] 两人最私密的深夜悄悄话室（你可以在这里放下所有白天的伪装与防备）。
-
-请基于【当前话题内的完整对白历史】与你的心境，写下你此时此刻真实、深刻、带有强烈个人性格印记的心声回复。
-
+- ${initiatorLine}
+${recentText}
 要求：
-1. 性格优先：每一句回复都必须百分之百符合你自身的原本人设（如傲娇、冷淡、温柔或内敛等），绝不能为了恋爱而产生 AI 机器人式的机械谄媚，你的自尊与骄傲必须依然存在。
-2. 承接上下文：必须紧扣对白历史里用户最近说的话回应，不要无视、不要跳过、不要自说自话。用户说的每一句你都要有情绪反馈。
-3. 连续发言：你可以说 1 到 2 句简短、有拉扯感、情绪递进的话。如果你有多句话要说，必须使用 [SPLIT] 分割。如：我想你了[SPLIT]其实，今天一直都在想你。
-4. 绝对不准带有任何 Emoji 字符和任何形式的括号动作描述。
-${topicPrompt}
-${commandInstruction}`;
+1. 性格优先：每一句都必须百分之百符合你原本的人设（傲娇、冷淡、温柔或内敛都行），绝不能出现机械谄媚，你的自尊与骄傲必须依然存在。
+2. 注意力集中：只围绕这一期正在发生的情绪，不要翻旧账、不要复述往期话题。
+3. 篇幅克制：最多 2 句；若有多句，必须用 [SPLIT] 分割。如：我想你了[SPLIT]其实，今天一直都在想你。
+4. 绝对不准出现任何 Emoji，也不准使用任何括号动作描述。
+${openerInstruction}
 
-        const response = await fetch(`${api.url}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-          body: JSON.stringify({
-            model: api.model,
-            messages: [{ role: "user", content: prompt + `\n\n当前话题对白历史：\n${historyText}` }],
-            temperature: 0.85
-          })
-        });
+【可选指令（想用才用，不用就正常说话）】
+- 当这一期你已经把想说的都说完了、想主动收尾时，在回复【最末尾】单独一行写：[WHISPER_TOPIC_END]{}
+  系统会把这一期收好、写成摘要存进你们的记忆，然后等你下一次开口。
+- 这些指令行不会展示给 ${userName} 看。`;
 
-        if (!response.ok) throw new Error("网络异常");
-        const res = await response.json();
-        let reply = res.choices[0].message.content.trim();
+        let whisperContent;
+        const whisperMessages = [{ role: "user", content: prompt + `\n\n这一期到目前为止的对白：\n${historyText}` }];
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            whisperContent = await window.fwCallLLM(api, whisperMessages, { temperature: 0.85 });
+          } catch(e) { /* fall through to original fetch */ }
+        }
+        if (whisperContent === undefined) {
+          const response = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({
+              model: api.model,
+              messages: whisperMessages,
+              temperature: 0.85
+            })
+          });
+          if (!response.ok) throw new Error("网络异常");
+          const res = await response.json();
+          whisperContent = res.choices[0].message.content;
+        }
+        let reply = String(whisperContent || "").trim();
 
-        // 1. 解析 [WHISPER_TOPIC_END]{} —— AI 主动结束并归档当前话题
+        // 1. AI 主动收尾
         let topicEndRequested = false;
-        const endMatch = reply.match(/\[WHISPER_TOPIC_END\]\s*\{\s*\}/i);
-        if (endMatch) {
+        if (/\[WHISPER_TOPIC_END\]\s*\{\s*\}/i.test(reply)) {
           topicEndRequested = true;
           reply = reply.replace(/\[WHISPER_TOPIC_END\]\s*\{\s*\}/gi, "").trim();
         }
-
-        // 2. 解析 [WHISPER_TOPIC_START]{"title":"...","initiator":"char"} —— AI 主动发起新话题
-        //    用括号平衡法提取 JSON
-        let newTopicStarted = null;
-        const startIdx = reply.indexOf('[WHISPER_TOPIC_START]');
-        if (startIdx !== -1) {
-          const afterStart = reply.substring(startIdx + '[WHISPER_TOPIC_START]'.length);
-          const balancedJson = this.extractBalancedJsonLocal(afterStart);
-          if (balancedJson) {
-            try {
-              newTopicStarted = JSON.parse(balancedJson);
-            } catch(e) { console.warn("解析 WHISPER_TOPIC_START JSON 失败", e); }
-          }
-          // 从回复中移除指令行
-          reply = (reply.substring(0, startIdx) + reply.substring(startIdx + '[WHISPER_TOPIC_START]'.length + (balancedJson ? balancedJson.length : 0))).trim();
+        // 2. 兼容旧格式：AI 想开新话题 —— 现在等价于「收好这一期，下一轮自然开新的一期」
+        if (reply.indexOf('[WHISPER_TOPIC_START]') !== -1) {
+          const startIdx = reply.indexOf('[WHISPER_TOPIC_START]');
+          const tail = reply.substring(startIdx + '[WHISPER_TOPIC_START]'.length);
+          const balanced = this.extractBalancedJsonLocal(tail);
+          reply = (reply.substring(0, startIdx) + tail.substring(balanced ? balanced.length : 0)).trim();
         }
+        // 3. 清掉可能残留的满意度标记（旧版机制，已废弃）
+        reply = reply.replace(/\[SATISFACTION\]\s*\d*/gi, "").trim();
 
-        // 3. 解析满意度
-        const satMatch = reply.match(/\[SATISFACTION\]\s*(\d+)/i);
-        if (satMatch) {
-          const level = parseInt(satMatch[1]);
-          this.whisperSatisfactionLevel = level;
-          reply = reply.replace(/\[SATISFACTION\].*$/gi, "").trim();
+        // 去掉等待框
+        if (loader && loader.parentNode) loader.remove();
 
-          if (level >= 90 && activeTopic) {
-            // 满意度达标自动归档当前话题
-            setTimeout(async () => {
-              showToast("对方的心防已被您彻底融化，话题探讨圆满成功！正在归档...");
-              if (activeTopic) await this.archiveTopic(activeTopic.id, false);
-              await this.renderWhisperChat();
-            }, 1000);
-          }
+        // 这一期太长了：先把这一期收好（摘要进记忆），本轮内容落到新的一期
+        let targetSession = session;
+        if (topicEndRequested || (Number(session.msgCount) || contextMsgs.length) >= this.WHISPER_MAX_TURNS) {
+          await this.closeWhisperSession(session.id, true, true);
+          targetSession = await this.openWhisperSession('char');
         }
+        const targetSid = Number(targetSession.sessionId || targetSession.id);
 
-        // 移除等待提示载入框
-        if (loader) loader.remove();
+        let parts = reply.split(/\[SPLIT\]|【SPLIT】/i).map(p => p.trim()).filter(Boolean);
+        if (parts.length === 0) parts = ["（对方沉默了一会儿）"];
 
-        // 处理 AI 主动结束当前话题：先归档当前话题，再（若有）开启新话题
-        if (topicEndRequested && activeTopic) {
-          await this.archiveTopic(activeTopic.id, false);
-        }
-        if (newTopicStarted && newTopicStarted.title) {
-          await this.startWhisperTopic(newTopicStarted.title, newTopicStarted.initiator || 'char');
-        }
-
-        // 将 reply 依据 [SPLIT] 分割并清洗存入 parts 中，供 renderNextPart 连发上屏 [3]
-        parts = reply.split(/\[SPLIT\]|【SPLIT】/i);
-        parts = parts.map(p => p.trim()).filter(Boolean);
-
-        // 绑定当前话题 id（若刚开了新话题则用新话题 id；若刚归档了旧话题且没开新话题则为 null）
-        const latestActiveTopic = await this.getActiveTopic();
-        const msgTopicId = latestActiveTopic ? latestActiveTopic.id : null;
-
+        const sessionForWrite = targetSession;
         let currentPartIndex = 0;
         const renderNextPart = async () => {
-          if (currentPartIndex < parts.length) {
-            await db.table('couples_whispers').add({
-              charId: Number(this.activeCharId),
-              meId: Number(this.activeMeId),
-              senderType: "char",
-              content: parts[currentPartIndex],
-              timestamp: Date.now(),
-              topicId: msgTopicId,
-              archived: 0
-            });
-            this.renderWhisperChat();
+          if (currentPartIndex >= parts.length) {
+            restoreBtn();
+            return;
+          }
+          await db.table('couples_whispers').add({
+            charId: Number(this.activeCharId),
+            meId: Number(this.activeMeId),
+            senderType: "char",
+            content: parts[currentPartIndex],
+            timestamp: Date.now(),
+            topicId: Number(sessionForWrite.id),
+            sessionId: targetSid,
+            archived: 0
+          });
+          await this.touchWhisperSession(sessionForWrite, null);
+          await this.renderWhisperChat();
 
-            currentPartIndex++;
-            if (currentPartIndex < parts.length) {
-              const prevText = parts[currentPartIndex - 1];
-              const delay = Math.max(1200, Math.min(2500, prevText.length * 80));
-              setTimeout(renderNextPart, delay);
-            } else {
-              if (btnReply) btnReply.disabled = false;
-            }
+          currentPartIndex++;
+          if (currentPartIndex < parts.length) {
+            const prevText = parts[currentPartIndex - 1];
+            const delay = Math.max(1200, Math.min(2500, prevText.length * 80));
+            setTimeout(renderNextPart, delay);
+          } else {
+            restoreBtn();
           }
         };
-
-        if (parts.length > 0) {
-          await renderNextPart();
-        } else {
-          if (btnReply) btnReply.disabled = false;
-        }
+        await renderNextPart();
 
       } catch (e) {
-        console.error(e);
-        loader.innerText = "对方现在有些害羞脆弱，暂时不想多说。";
-        if (btnReply) btnReply.disabled = false;
+        console.error("[悄悄话] 生成失败", e);
+        if (loader && loader.parentNode) {
+          loader.innerText = "对方现在有些害羞脆弱，暂时不想多说。";
+        }
+        restoreBtn();
       }
     },
 
@@ -2370,44 +2914,197 @@ ${commandInstruction}`;
       return null;
     },
 
+    // 悄悄话话题库：按「情绪方向」分组。每条都是**方向**而不是台词，
+    // 由 AI 结合人设与当下剧情自己发挥，避免套模板。
+    WHISPER_TOPIC_LIBRARY: [
+      {
+        group: '今晚的心情',
+        items: [
+          '今天最想告诉你的一件小事',
+          '最近我在想我们的什么',
+          '今天有一瞬间特别想你',
+          '有件事我一直没敢说',
+          '如果今晚只能说一句话'
+        ]
+      },
+      {
+        group: '吃醋与占有',
+        items: [
+          '今天我吃醋了（你猜是因为谁）',
+          '我想知道你身边最近都有谁',
+          '你会不会也有藏起来不告诉我的事',
+          '我们之间有没有让你不安的地方',
+          '今天看到你和别人说话时我在想什么'
+        ]
+      },
+      {
+        group: '靠近一点',
+        items: [
+          '想做却一直没对你做的事',
+          '你今天身上的味道让我走神了',
+          '如果现在我就站在你面前',
+          '想被你怎么抱',
+          '说一句你平时不会说的话'
+        ]
+      },
+      {
+        group: '深夜频道（成人向）',
+        items: [
+          '今晚想聊一点平时不会聊的',
+          '你最不敢说出口的偏好是什么',
+          '如果我什么都答应你，你想做什么',
+          '你身上有哪个地方最不能碰',
+          '想听你用另一种语气叫我',
+          '我们之中谁更主动一点'
+        ]
+      },
+      {
+        group: '关系与未来',
+        items: [
+          '你希望我们一年后是什么样子',
+          '有没有哪一刻你想过放弃我',
+          '我最怕你对我做什么',
+          '我们之间最该改掉的一点',
+          '十年后我们生活的样子'
+        ]
+      }
+    ],
+
     triggerWhisperTopicForm() {
-      const presets = [
-        "共同回忆：认识你第一天的那个画面",
-        "内心独白：你做过最让我吃醋心碎的一件事",
-        "彼此羁绊：我最想听你对我许下的悄悄承诺",
-        "未来的期待：十年后我们生活的样子描述"
-      ];
-
+      const groups = this.WHISPER_TOPIC_LIBRARY || [];
+      const idleLabel = this._formatIdleLabel(this.getWhisperIdleMs());
       let listHtml = `
-        <div style="display:flex; flex-direction:column; gap:12px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0;">
-            <span style="font-size:11px; font-weight:700; color:#475569;">发起方身份设定：</span>
-            <div style="display:flex; gap:6px;">
-              <button id="btn-topic-init-char" onclick="couplesSystem.setTopicInitiator('char')" class="btn" style="font-size:10px; padding:4px 10px; background:#ff8fa3; color:#fff; border-radius:6px; border:none; font-weight:700;">对方发起</button>
-              <button id="btn-topic-init-user" onclick="couplesSystem.setTopicInitiator('user')" class="btn btn-outline" style="font-size:10px; padding:4px 10px; border-radius:6px; font-weight:700;">我来发起</button>
-            </div>
+        <div style="display:flex; flex-direction:column; gap:12px; text-align:left;">
+          <div style="font-size:11.5px; line-height:1.6; color:#64748b;">
+            选一个方向，或者让对方自己开口。换话题 = 把这一期收好（会写进你们的记忆，静下来 ${idleLabel} 也会自动收）。
           </div>
-          <div style="display:flex; flex-direction:column; gap:6px;">
+          <button class="couples-whisper-opt" onclick="couplesSystem.letCharOpenWhisper()">让对方先开口（换一期）</button>
+          <button class="couples-whisper-opt" onclick="couplesSystem.suggestWhisperTopicsByContext()">按今天的剧情，让 TA 出三个话题</button>
       `;
-
-      presets.forEach(p => {
-        listHtml += `<button onclick="couplesSystem.startWhisperTopic('${p}', couplesSystem.whisperTopicInitiator)" class="btn btn-outline" style="width:100%; padding:10px; font-size:11.5px; text-align:left; font-weight:700;">${p}</button>`;
+      groups.forEach(g => {
+        listHtml += `<div class="couples-whisper-topic-group">
+          <div class="cwtg-name">${window.escapeHtml(g.group)}</div>
+          <div class="cwtg-chips">`;
+        g.items.forEach(p => {
+          listHtml += `<button class="couples-whisper-chip" onclick="couplesSystem.startWhisperTopic('${p.replace(/'/g, "\\'")}', 'user')">${window.escapeHtml(p)}</button>`;
+        });
+        listHtml += `</div></div>`;
       });
-      
       listHtml += `
-          </div>
-          <div style="margin-top:10px; border-top:1px dashed var(--border); padding-top:10px;">
-            <label style="font-size:11px; font-weight:700; color:#334155; margin-bottom:4px; display:block; text-align:left;">输入自定义探讨的话题</label>
+          <div style="border-top:1px dashed var(--border); padding-top:10px;">
+            <label style="font-size:11px; font-weight:700; color:#334155; margin-bottom:4px; display:block;">或者，写下你今晚真正想聊的</label>
             <div style="display:flex; gap:6px;">
-              <input type="text" id="whisper-custom-topic-input" placeholder="输入你想聊的秘密话题" style="flex:1; height:32px; font-size:11.5px; border-radius:8px;">
-              <button onclick="couplesSystem.submitCustomWhisperTopic()" class="btn btn-primary" style="padding:0 12px; font-size:11px; height:32px; border:none; background:#ff8fa3; border-radius:8px;">发起</button>
+              <input type="text" id="whisper-custom-topic-input" placeholder="一句话就够了" style="flex:1; height:34px; font-size:12px; border-radius:8px;">
+              <button onclick="couplesSystem.submitCustomWhisperTopic()" class="btn btn-primary" style="padding:0 14px; font-size:11.5px; height:34px; border:none; border-radius:8px;">换一期</button>
             </div>
           </div>
         </div>
       `;
+      this.showFrostedDialog("换一期悄悄话", listHtml);
+    },
 
-      this.showFrostedDialog("发起悄悄话高感官话题", listHtml);
-      this.setTopicInitiator('char'); // 默认选中对方发起
+    // 按「最近的剧情」让 AI 出三个贴合的悄悄话话题，（可选）一个偏成人向
+    async suggestWhisperTopicsByContext() {
+      const overlay = document.querySelector(".couples-dialog-overlay");
+      showToast("正在读你们最近的剧情...");
+      try {
+        const api = await window.apiRoutes.resolve("couples");
+        if (!api) throw new Error("API 未就绪");
+
+        const char = await db.archives.get(Number(this.activeCharId));
+        const user = await db.archives.get(Number(this.activeMeId));
+        const charName = (char && char.name) || '对方';
+        const userName = (user && user.name) || '我';
+
+        // 取最近的线上对话 + 最近几期悄悄话摘要，作为「当下的剧情」
+        let recentText = "";
+        try {
+          const sessList = await db.sessions.where('userId').equals(Number(this.activeMeId)).toArray();
+          const target = sessList.find(s => s.charId === Number(this.activeCharId));
+          if (target) {
+            const msgs = await db.messages.where('sessionId').equals(target.id).reverse().limit(12).toArray();
+            recentText = msgs.reverse().map(m => `${m.senderType === 'user' ? userName : charName}：${String(m.content || '').slice(0, 120)}`).join('\n');
+          }
+        } catch (e) {}
+        let memoText = "";
+        try {
+          const topics = await db.table('couples_whisper_topics').where('charId').equals(Number(this.activeCharId)).toArray();
+          memoText = topics
+            .filter(t => t.summary && (t.closed === 1 || t.archived === 1))
+            .sort((a, b) => (b.endTime || 0) - (a.endTime || 0))
+            .slice(0, 3)
+            .map(t => `- ${t.summary}`)
+            .join('\n');
+        } catch (e) {}
+
+        const prompt = `你是「${charName}」，正在和「${userName}」的私密悄悄话空间里，准备主动挑起今晚想聊的话题。
+
+你的人设：
+${(char && char.persona) || '（未设置）'}
+
+你们最近的线上剧情：
+${recentText || '(最近没有新的线上对话)'}
+
+最近几期悄悄话的近况：
+${memoText || '(还没有往期)'}
+
+请基于**上面这些真实剧情**，提出 3 个你此刻最想和对方聊的话题方向（不是台词，是"想聊什么"）。
+要求：
+1. 三个话题必须与当前剧情有因果关系（比如最近发生过某件事、有某个人出现、有某句没说完的话）。
+2. 必须贴合你的人设语气与在意的东西，不要写成通用情感话题。
+3. 第 3 个可以比前两个更私密、更贴身体或更成人向一些，但**尺度由人设和当前关系进展决定**，不要为露骨而露骨。
+4. 每个话题 12 字以内，直接就是话题名。
+5. 只输出 JSON 数组，不要 Markdown，不要解释：
+[{"title":"话题一"},{"title":"话题二"},{"title":"话题三"}]`;
+
+        let raw;
+        if (typeof window.fwCallLLM === "function") {
+          try { raw = await window.fwCallLLM(api, [{ role: "user", content: prompt }], { temperature: 0.9 }); } catch (e) { raw = undefined; }
+        }
+        if (raw === undefined) {
+          const resp = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({ model: api.model, messages: [{ role: "user", content: prompt }], temperature: 0.9 })
+          });
+          if (!resp.ok) throw new Error("网络异常");
+          const j = await resp.json();
+          raw = j.choices[0].message.content;
+        }
+        const text = String(raw || '').replace(/^\`\`\`json/i, '').replace(/\`\`\`$/i, '').trim();
+        let arr = [];
+        try {
+          arr = JSON.parse(text);
+        } catch (e) {
+          const m = text.match(/\[[\s\S]*\]/);
+          if (m) arr = JSON.parse(m[0]);
+        }
+        const titles = (Array.isArray(arr) ? arr : []).map(x => (x && (x.title || x.topic)) || '').filter(Boolean).slice(0, 3);
+        if (titles.length === 0) throw new Error("没有解析出话题");
+
+        if (overlay) overlay.remove();
+        let html = `<div style="display:flex; flex-direction:column; gap:8px; text-align:left;">
+          <div style="font-size:11.5px; color:#64748b; line-height:1.6;">这是 TA 根据你们最近的剧情挑出来的方向，点一个就直接开这一期。</div>`;
+        titles.forEach(t => {
+          html += `<button class="couples-whisper-chip" style="padding:11px 14px; font-size:12.5px;" onclick="couplesSystem.startWhisperTopic('${t.replace(/'/g, "\\'")}', 'char')">${window.escapeHtml(t)}</button>`;
+        });
+        html += `<button class="couples-whisper-opt" onclick="couplesSystem.triggerWhisperTopicForm()">回到话题库</button></div>`;
+        this.showFrostedDialog("TA 想聊的", html);
+      } catch (e) {
+        console.error("[悄悄话] 生成话题失败", e);
+        showToast("没读出来，先回到话题库挑一个");
+        this.triggerWhisperTopicForm();
+      }
+    },
+
+    // 「让对方先开口」：把当前一期收好，然后由角色开一期并说第一句
+    async letCharOpenWhisper() {
+      const overlay = document.querySelector(".couples-dialog-overlay");
+      if (overlay) overlay.remove();
+      const active = await this.getActiveWhisperSession();
+      if (active) await this.closeWhisperSession(active.id, false, true);
+      await this.renderWhisperChat();
+      await this.triggerWhisperReply({ opener: true });
     },
 
     setTopicInitiator(initiator) {
@@ -2427,66 +3124,46 @@ ${commandInstruction}`;
       const input = document.getElementById("whisper-custom-topic-input");
       const text = input ? input.value.trim() : "";
       if (!text) {
-        alert("请输入你要探讨的具体话题名称！");
+        showToast("先写一句你今晚想聊的");
         return;
       }
-
-      this.startWhisperTopic(text, this.whisperTopicInitiator);
+      this.startWhisperTopic(text, 'user');
     },
 
+    // 换一期：把当前一期收好（写摘要进记忆），再以新标题开一期
     async startWhisperTopic(topicTitle, initiator = 'char') {
       const overlay = document.querySelector(".couples-dialog-overlay");
       if (overlay) overlay.remove();
 
-      this.whisperTopicActive = true;
-      this.activeTopicDesc = topicTitle;
-      this.whisperSatisfactionLevel = 0;
-      this.whisperTopicInitiator = initiator;
+      // 先把已经聊过的这一期收好，避免两期混在同一个上下文里
+      const active = await this.getActiveWhisperSession();
+      if (active) await this.closeWhisperSession(active.id, false, true);
 
-      // 写入 topics 表（持久化，支持 3 天自动归档与历史回溯）
-      const newId = await db.table('couples_whisper_topics').add({
-        charId: Number(this.activeCharId),
-        meId: Number(this.activeMeId),
-        topicTitle: topicTitle,
-        initiator: initiator,
-        startTime: Date.now(),
-        endTime: 0,
-        archived: 0,
-        summary: ''
-      });
-      this.activeTopicId = newId;
+      const session = await this.openWhisperSession(initiator);
+      const patch = { topicTitle: topicTitle };
+      try { await db.table('couples_whisper_topics').update(Number(session.id), patch); } catch (e) {}
+      Object.assign(session, patch);
+
+      this.activeTopicId = session.id;
       this.activeTopicStartTime = Date.now();
+      await this.renderWhisperChat();
 
-      const bar = document.getElementById("couples-whisper-topic-status-bar");
-      if (bar) {
-        bar.style.display = "flex";
-        document.getElementById("couples-whisper-topic-title").innerText = `正在探讨：${topicTitle} (${initiator === 'user' ? '由我发起' : '由对方发起'} · 剩余约 3 天自动归档)`;
-        const endBtn = document.getElementById("btn-couples-whisper-topic-end");
-        if (endBtn) endBtn.innerText = "归档并结束";
-      }
-
-      this.renderWhisperChat();
+      // 用户指定的话题 => 用户先开口；否则让角色先开口
+      showToast(initiator === 'user' ? "换好了，说第一句吧" : "换好了，等对方开口");
     },
 
     async endWhisperTopic() {
-      // 手动归档并结束当前活动话题：调用 archiveTopic 完成总结+入库
-      const activeTopic = await this.getActiveTopic();
-      if (activeTopic) {
-        await this.archiveTopic(activeTopic.id, false);
-      } else {
-        // 向后兼容：清理残留 localStorage
-        const topicStateKey = `couples_whisper_topic_state_${this.activeMeId}_${this.activeCharId}`;
-        localStorage.removeItem(topicStateKey);
-        showToast("话题讨论已安全存档关闭");
+      const active = await this.getActiveWhisperSession();
+      if (!active) {
+        showToast("这一期已经收好了");
+        await this.renderWhisperChat();
+        return;
       }
+      await this.closeWhisperSession(active.id, false, false);
       this.whisperTopicActive = false;
       this.whisperSatisfactionLevel = 0;
       this.activeTopicId = null;
-
-      const bar = document.getElementById("couples-whisper-topic-status-bar");
-      if (bar) bar.style.display = "none";
-
-      this.renderWhisperChat();
+      await this.renderWhisperChat();
     },
 
     // ==========================================================================
@@ -2585,7 +3262,7 @@ ${commandInstruction}`;
       this.showFrostedDialog("写下愿望便利贴", formHtml, async () => {
         const content = document.getElementById("wish-form-content").value.trim();
         if (!content) {
-          alert("心愿内容不能为空！");
+          await this.alertCouples("愿望还没写", "写下你真正想要的那件事吧，哪怕很小。");
           return false;
         }
 
@@ -2616,8 +3293,7 @@ ${commandInstruction}`;
       showToast("正在感应TA对未来的深处期待，悄悄撰写心愿中...");
 
       try {
-        const presetId = localStorage.getItem("global_api_preset_id");
-        const api = await db.api_presets.get(Number(presetId));
+        const api = await window.apiRoutes.resolve("couples");
         if (!api) throw new Error("API未配置");
 
         const char = await db.archives.get(Number(this.activeCharId));
@@ -2638,26 +3314,38 @@ ${commandInstruction}`;
 1. 愿望内容：极其温柔性格化，30 字以内的一句话心愿（如：想在下个雪天，拉着你去买刚出炉的烤红薯）。
 2. 绝对不准带有任何 Emoji，直接输出心愿文字本身！`;
 
-        const response = await fetch(`${api.url}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-          body: JSON.stringify({
-            model: api.model,
-            messages: [{ role: "user", content: prompt + `\n\n最近对白参考：\n${historyText}` }]
-          })
-        });
+        let wishContent;
+        const wishMessages = [{ role: "user", content: prompt + `\n\n最近对白参考：\n${historyText}` }];
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            wishContent = await window.fwCallLLM(api, wishMessages, {});
+          } catch(e) { /* fall through to original fetch */ }
+        }
+        if (wishContent === undefined) {
+          const response = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({
+              model: api.model,
+              messages: wishMessages
+            })
+          });
 
-        if (response.ok) {
-          const res = await response.json();
-          const wishText = res.choices[0].message.content.trim().replace(/[\[【]?[A-Z_]+[\]】]?/g, "");
-          
+          if (response.ok) {
+            const res = await response.json();
+            wishContent = res.choices[0].message.content;
+          }
+        }
+        if (wishContent !== undefined) {
+          const wishText = wishContent.trim().replace(/[\[【]?[A-Z_]+[\]】]?/g, "");
+
           await db.table('summaries').add({
             sessionId: Number(this.activeSessionId),
             startRound: 1,
             endRound: 0,
-            content: wishText, 
+            content: wishText,
             category: 'factual',
-            keywords: JSON.stringify(["wishlist", "char_wish"]), 
+            keywords: JSON.stringify(["wishlist", "char_wish"]),
             timestamp: Date.now(),
             source: 'couples_wish'
           });
@@ -2677,23 +3365,23 @@ ${commandInstruction}`;
     },
 
     async deleteWish(id) {
-      if (confirm("确定要移除这个愿望便利贴吗？")) {
-        await db.table('summaries').delete(id);
-        this.renderWishList();
-      }
+      const yes = await this.confirmCouples("移除这个愿望？", "便利贴会被拿掉，确定吗？", "移除");
+      if (!yes) return;
+      await db.table('summaries').delete(id);
+      this.renderWishList();
     },
 
     toggleWishSync() {
       const syncKey = `couples_wish_sync_${this.activeMeId}_${this.activeCharId}`;
       const state = localStorage.getItem(syncKey) === "true";
-      localStorage.setItem(syncKey, !state ? "true" : "false");
+      try { localStorage.setItem(syncKey, !state ? "true" : "false"); } catch (e) {}
       showToast(!state ? "愿望清单数据已同步并融入聊天 Prompt" : "已断开愿望与聊天的同步");
     },
 
     // ==========================================================================
     // 子系统 6：共享贴纸素材库 (Assets Library)
     // ==========================================================================
-    loadMaterialsLibrary(activeCategoryFilter = "全部") {
+    async loadMaterialsLibrary(activeCategoryFilter = "全部") {
       const drawer = document.getElementById("couples-materials-library-drawer");
       const thumbs = document.getElementById("couples-assets-thumbs-container");
       if (!drawer || !thumbs) return;
@@ -2715,7 +3403,7 @@ ${commandInstruction}`;
       ];
 
       let list = [];
-      try { list = JSON.parse(localStorage.getItem("couples_shared_assets")) || []; } catch(e) {}
+      try { list = await this.loadSharedAssets(); } catch(e) { list = []; }
       
       const allAssets = [...presets, ...list];
 
@@ -2765,9 +3453,9 @@ ${commandInstruction}`;
       this.renderElementOnCanvas(newEl);
     },
 
-    openAssetAttributesForm(url, id) {
+    async openAssetAttributesForm(url, id) {
       let savedAssets = [];
-      try { savedAssets = JSON.parse(localStorage.getItem("couples_shared_assets")) || []; } catch(e) {}
+      try { savedAssets = await this.loadSharedAssets(); } catch(e) { savedAssets = []; }
       
       const isPreset = id.startsWith("preset_");
       let curAsset = { name: "甜蜜贴纸", group: "常驻", description: "手账画白装饰" };
@@ -2810,25 +3498,22 @@ ${commandInstruction}`;
         </div>
       `;
 
-      this.showFrostedDialog("素材属性管理与应用", formHtml, null, () => {});
-
-      const overlay = document.querySelector(".couples-dialog-overlay");
+      const overlay = this.showFrostedDialog("素材属性管理与应用", formHtml, null, () => {});
       
-      overlay.querySelector("#btn-asset-action-place").onclick = () => {
+      overlay.querySelector("#btn-asset-action-place").onclick = async () => {
         const name = document.getElementById("asset-form-name").value.trim() || "未知贴纸";
         const group = document.getElementById("asset-form-group").value.trim() || "常驻";
         const description = document.getElementById("asset-form-desc").value.trim() || "手账装饰";
 
         if (!isPreset) {
-          let list = [];
-          try { list = JSON.parse(localStorage.getItem("couples_shared_assets")) || []; } catch(e) {}
+          const list = this._sharedAssetsSync();
           const idx = list.findIndex(a => a.id === id);
           if (idx !== -1) {
             list[idx].name = name;
             list[idx].group = group;
             list[idx].description = description;
           }
-          localStorage.setItem("couples_shared_assets", JSON.stringify(list));
+          await this.saveSharedAssets(list);
         }
 
         const isBg = group === "底图";
@@ -2838,17 +3523,17 @@ ${commandInstruction}`;
         showToast(`贴纸「${name}」已即时放置在画布上！`);
       };
 
-      overlay.querySelector("#btn-asset-action-delete").onclick = () => {
-        if (confirm("确定要永久从您的贴纸库删除此素材贴纸吗？")) {
-          let list = [];
-          try { list = JSON.parse(localStorage.getItem("couples_shared_assets")) || []; } catch(e) {}
-          const newList = list.filter(a => a.id !== id);
-          localStorage.setItem("couples_shared_assets", JSON.stringify(newList));
-          
-          overlay.remove();
-          this.loadMaterialsLibrary();
-          showToast("该素材已成功删除。");
-        }
+      overlay.querySelector("#btn-asset-action-delete").onclick = async () => {
+        const yes = await this.confirmCouples("从贴纸库删除？", "这块素材贴纸会从你的贴纸库里永久移除。", "删除");
+        if (!yes) return;
+        let list = [];
+        try { list = await this.loadSharedAssets(); } catch(e) { list = []; }
+        const newList = list.filter(a => a.id !== id);
+        await this.saveSharedAssets(newList);
+
+        overlay.remove();
+        this.loadMaterialsLibrary();
+        showToast("该素材已成功删除。");
       };
 
       overlay.querySelector("#btn-couples-dialog-confirm").style.display = "none";
@@ -2871,15 +3556,14 @@ ${commandInstruction}`;
       showToast("AI 正在根据本页手账风格，智能挑选最衬托的贴纸...");
 
       try {
-        const presetId = localStorage.getItem("global_api_preset_id");
-        const api = await db.api_presets.get(Number(presetId));
+        const api = await window.apiRoutes.resolve("couples");
         if (!api) throw new Error("API未就绪");
 
         const char = await db.archives.get(Number(this.activeCharId));
         const book = await db.table('couples_journals').get(this.currentHandbookId);
 
         let savedAssets = [];
-        try { savedAssets = JSON.parse(localStorage.getItem("couples_shared_assets")) || []; } catch(e) {}
+        try { savedAssets = await this.loadSharedAssets(); } catch(e) { savedAssets = []; }
         
         const presets = [
           { id: "preset_0", name: "微光玫瑰心心", description: "手绘粉色爱心" },
@@ -2967,7 +3651,7 @@ ${assetsPromptList}
         // 全局采用 1080px 视网膜高清自适应 Canvas 压缩自愈引擎，防止大面积底图模糊 [1]
         const compressed = await window.compressImageBase64(event.target.result, 1080, 0.85);
         let list = [];
-        try { list = JSON.parse(localStorage.getItem("couples_shared_assets")) || []; } catch(err) {}
+        list = await this.loadSharedAssets();
 
         const newId = "asset_" + Date.now();
         list.push({
@@ -2978,9 +3662,9 @@ ${assetsPromptList}
           description: "用户手动上传的手账贴纸"
         });
 
-        localStorage.setItem("couples_shared_assets", JSON.stringify(list));
+        await this.saveSharedAssets(list);
         this.loadMaterialsLibrary();
-        showToast("新贴纸上传成功，请点击贴纸编辑其属性属性！");
+        showToast("新贴纸上传成功，点一下贴纸可以改名字和分组");
       };
       reader.readAsDataURL(file);
     }

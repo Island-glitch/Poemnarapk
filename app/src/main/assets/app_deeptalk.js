@@ -15,11 +15,14 @@ function escapeHtml(str) {
             .replace(/'/g, '&#39;');
 }
 
-function resolveAvatar(avatar) {
+function resolveAvatar(avatar, name) {
   if (!avatar) {
-    // 关键修复：SVG 内部属性必须用单引号，否则双引号会提前闭合 <img src="..."> 的 src 属性，
-    // 导致头像显示为破损图片，且剩余 SVG 标记（含 > 字符）泄漏到页面，造成名字带残破 > 字样
-    return "data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><circle cx='50' cy='50' r='50' fill='%23cbd5e1'/><text x='50' y='62' font-size='50' text-anchor='middle' fill='%2394a3b8' font-family='sans-serif'>人</text></svg>";
+    const ch = String(name || '').charAt(0) || '人';
+    const colors = ['#3b82f6', '#0f766e', '#8b5cf6', '#e11d48', '#b45309', '#0891b2', '#be185d', '#4f46e5'];
+    const color = colors[name ? name.charCodeAt(0) % colors.length : 0];
+    return "data:image/svg+xml;utf8," + encodeURIComponent(
+      `<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><circle cx='50' cy='50' r='50' fill='${color}'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='#fff' font-family='sans-serif' font-weight='700'>${ch}</text></svg>`
+    );
   }
   if (avatar instanceof Blob) {
     return URL.createObjectURL(avatar);
@@ -170,7 +173,7 @@ async function renderSelectTab() {
       const char = await db.archives.get(s.charId);
       candidatesHtml += `
         <div class="session-item" onclick="openNewDeeptalkForm(${s.id}, ${s.charId})" style="padding:10px; border-radius:10px; background:#ffffff; margin-bottom:8px; border:1px solid var(--border);">
-          <img class="session-avatar" src="${resolveAvatar(s.customCharAvatar || char?.avatar)}" style="width:36px; height:36px; border-radius:50%;">
+          <img class="session-avatar" src="${resolveAvatar(s.customCharAvatar || char?.avatar, s.customCharName || char?.name)}" style="width:36px; height:36px; border-radius:50%;">
           <div class="session-detail" style="margin-left:10px;">
             <div class="session-name" style="font-size:13px; font-weight:700;">与 ${s.customCharName || char?.name} 开启深谈</div>
           </div>
@@ -196,7 +199,7 @@ async function renderSelectTab() {
       activeHtml += `
         <div class="session-item" onclick="openDeeptalkRoom(${t.id})" style="padding:12px; border-radius:12px; background:#ffffff; margin-bottom:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
           <div style="display:flex; align-items:center;">
-            <img class="session-avatar" src="${resolveAvatar(char?.avatar)}" style="width:40px; height:40px; border-radius:50%;">
+            <img class="session-avatar" src="${resolveAvatar(char?.avatar, char?.name)}" style="width:40px; height:40px; border-radius:50%;">
             <div style="margin-left:12px;">
               <div style="font-size:14px; font-weight:700; color:var(--text-primary);">${t.topic}</div>
               <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">伙伴: ${char?.name}</div>
@@ -225,7 +228,7 @@ async function renderSelectTab() {
       finishedHtml += `
         <div class="session-item" onclick="openDeeptalkRoom(${t.id})" style="padding:12px; border-radius:12px; background:#f1f5f9; opacity: 0.85; margin-bottom:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
           <div style="display:flex; align-items:center;">
-            <img class="session-avatar" src="${resolveAvatar(char?.avatar)}" style="width:40px; height:40px; border-radius:50%;">
+            <img class="session-avatar" src="${resolveAvatar(char?.avatar, char?.name)}" style="width:40px; height:40px; border-radius:50%;">
             <div style="margin-left:12px;">
               <div style="font-size:14px; font-weight:700; color:var(--text-secondary); text-decoration: line-through;">${t.topic}</div>
               <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">伙伴: ${char?.name} (已归档)</div>
@@ -414,8 +417,7 @@ async function triggerDeeptalkAIResponse() {
   titleEl.classList.add("header-typing");
 
   try {
-    const presetId = localStorage.getItem("global_api_preset_id");
-    const api = await db.api_presets.get(Number(presetId));
+    const api = await window.apiRoutes.resolve("deeptalk");
     if (!api) throw new Error("API 预设异常，请前往设置面板检查配置");
 
     const talk = await db.deeptalks.get(activeDeeptalkId);
@@ -480,19 +482,26 @@ ${sess?.customCharPersona || char?.persona}
       messagesToSend.push({ role: h.senderType === 'user' ? 'user' : 'assistant', content: h.content });
     });
 
-    const response = await fetch(`${api.url}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-      body: JSON.stringify({
-        model: api.model,
-        messages: messagesToSend,
-        temperature: 0.8
-      })
-    });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status} 错误`);
-    const result = await response.json();
-    let replyText = result.choices[0].message.content.trim();
+    let replyText;
+    if (typeof window.fwCallLLM === "function") {
+      try {
+        replyText = await window.fwCallLLM(api, messagesToSend, { temperature: 0.8 });
+      } catch(e) { /* fall through to original fetch */ }
+    }
+    if (replyText === undefined) {
+      const response = await fetch(`${api.url}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+        body: JSON.stringify({
+          model: api.model,
+          messages: messagesToSend,
+          temperature: 0.8
+        })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} 错误`);
+      const result = await response.json();
+      replyText = result.choices[0].message.content.trim();
+    }
 
     // === 【对话思想截获核心】：剥离 [THOUGHT]...[/THOUGHT] 并存入小宇宙 ===
     const dialogueData = extractDialogueThought(replyText);
@@ -773,8 +782,7 @@ async function summarizeDeeptalkSession() {
 ${historyText}`;
 
   try {
-    const presetId = localStorage.getItem("global_api_preset_id");
-    const api = await db.api_presets.get(Number(presetId));
+    const api = await window.apiRoutes.resolve("deeptalk");
     if (!api) throw new Error("无法读取 API 配置");
 
     const response = await fetch(`${api.url}/chat/completions`, {
@@ -849,8 +857,7 @@ window.triggerManualThought = async function(btnEl) {
       dialogText += `[${h.senderType === 'user' ? '用户' : char?.name}]: ${h.content}\n`;
     });
 
-    const presetId = localStorage.getItem("global_api_preset_id");
-    const api = await db.api_presets.get(Number(presetId));
+    const api = await window.apiRoutes.resolve("deeptalk");
     if (!api) throw new Error("无法读取 API 预设，请检查设置。");
 
     const prompt = `你是一个深层心理探索器。根据以下深谈中产生的对话切片记录：

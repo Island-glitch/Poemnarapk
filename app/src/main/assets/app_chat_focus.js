@@ -707,19 +707,27 @@
 请你完全站在你自身人设立场、性格与情感态度出发，写一段符合当前余温的考评反馈语（不超过100字，绝不能盲目客气或死板说教，用词必须极度生动并充满性格色彩！）
 请直接输出该考评反馈台词，禁止包含动作和心理描写！`;
 
-      const response = await fetch(`${api.url}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-        body: JSON.stringify({
-          model: api.model,
-          messages: [{ role: "user", content: evalPrompt }],
-          temperature: 0.5
-        })
-      });
+      let evalText;
+      if (typeof window.fwCallLLM === "function") {
+        try {
+          evalText = await window.fwCallLLM(api, [{ role: "user", content: evalPrompt }], { temperature: 0.5 });
+        } catch(e) { /* fall through to original fetch */ }
+      }
+      if (evalText === undefined) {
+        const response = await fetch(`${api.url}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+          body: JSON.stringify({
+            model: api.model,
+            messages: [{ role: "user", content: evalPrompt }],
+            temperature: 0.5
+          })
+        });
 
-      if (!response.ok) throw new Error("考评生成失败");
-      const result = await response.json();
-      const evalText = result.choices[0].message.content.trim();
+        if (!response.ok) throw new Error("考评生成失败");
+        const result = await response.json();
+        evalText = result.choices[0].message.content.trim();
+      }
 
       // 将轨迹保存入库
       const historyItem = {
@@ -796,19 +804,27 @@
 
 对方刚刚在专注中“戳了戳”你。请你极速给予对方一句话作为秒回，用于鼓励、戏谑、催促或娇羞回应（限 25 字以内，绝对禁止说教或长篇大论）。直接输出回复台词，禁止任何动作旁白！`;
 
-      const response = await fetch(`${api.url}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-        body: JSON.stringify({
-          model: api.model,
-          messages: [{ role: "user", content: pokePrompt }],
-          temperature: 0.6
-        })
-      });
+      let reply;
+      if (typeof window.fwCallLLM === "function") {
+        try {
+          reply = await window.fwCallLLM(api, [{ role: "user", content: pokePrompt }], { temperature: 0.6 });
+        } catch(e) { /* fall through to original fetch */ }
+      }
+      if (reply === undefined) {
+        const response = await fetch(`${api.url}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+          body: JSON.stringify({
+            model: api.model,
+            messages: [{ role: "user", content: pokePrompt }],
+            temperature: 0.6
+          })
+        });
 
-      if (!response.ok) throw new Error();
-      const result = await response.json();
-      const reply = result.choices[0].message.content.trim();
+        if (!response.ok) throw new Error();
+        const result = await response.json();
+        reply = result.choices[0].message.content.trim();
+      }
 
       const sess = await db.sessions.get(activeSessionId);
       sender.innerText = sess.customCharName || "对方";

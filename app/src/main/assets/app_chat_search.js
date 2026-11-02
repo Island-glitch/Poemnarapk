@@ -196,7 +196,10 @@
 
             let senderName = "未知群员";
             if (Number(m.senderId) === 99999) {
-              senderName = "群助手";
+              const botObj = (window.groupChatSystem && window.groupChatSystem.resolveBot)
+                ? window.groupChatSystem.resolveBot(group, m)
+                : null;
+              senderName = botObj ? botObj.name : "群助手";
             } else if (m.senderType === 'user') {
               const user = sess ? await db.archives.get(sess.userId) : null;
               senderName = sess?.customUserName || user?.name || "我";

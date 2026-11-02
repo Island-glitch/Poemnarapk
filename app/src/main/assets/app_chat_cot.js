@@ -25,6 +25,9 @@
     offlineSteps: [],
     customRegexRules: [],
 
+    // 线下美化正则 (与思维链解耦：独立存储、独立开关、自动保存)
+    offlineBeautifyRules: [],
+
     // 内置不可更改的思维链自动补全与归一化正则
     builtinCotRule: {
       id: 'builtin_cot',
@@ -58,6 +61,7 @@
         await this.loadSessionConfig();
         await this.loadPresetsDropdown();
         this.renderStepsList();
+        this.renderOfflineBeautifySection();
       }
     },
 
@@ -88,6 +92,46 @@
       this.customRegexRules = (sess.cotRegexRules && Array.isArray(sess.cotRegexRules))
         ? JSON.parse(JSON.stringify(sess.cotRegexRules))
         : [];
+
+      // 线下美化正则：独立加载（与思维链解耦）
+      // 兼容迁移：旧版将 offlineBeautify 规则混存在 cotRegexRules 中，此处剥离迁移到独立字段
+      this.offlineBeautifyRules = (sess.offlineBeautifyRules && Array.isArray(sess.offlineBeautifyRules))
+        ? JSON.parse(JSON.stringify(sess.offlineBeautifyRules))
+        : [];
+      let needSaveMigration = false;
+      if (this.customRegexRules.length > 0) {
+        const migrated = this.customRegexRules.filter(r => r.type === 'offlineBeautify');
+        if (migrated.length > 0) {
+          this.offlineBeautifyRules = this.offlineBeautifyRules.concat(migrated);
+          this.customRegexRules = this.customRegexRules.filter(r => r.type !== 'offlineBeautify');
+          needSaveMigration = true;
+        }
+      }
+      // 迁移旧版 preset_status_bar → builtin_status_bar (内置状态栏改用统一 id)
+      const oldPresetIdx = this.offlineBeautifyRules.findIndex(r => r.id === 'preset_status_bar');
+      if (oldPresetIdx >= 0) {
+        const oldRule = this.offlineBeautifyRules[oldPresetIdx];
+        oldRule.id = 'builtin_status_bar';
+        oldRule.isBuiltin = true;
+        oldRule.name = '状态栏 (好感度/兴奋值/心声)';
+        needSaveMigration = true;
+      }
+      // 内置状态栏 (默认开启，用户可手动关闭；不存在时创建)
+      const builtinInList = this.offlineBeautifyRules.find(r => r.id === 'builtin_status_bar');
+      if (!builtinInList) {
+        this.offlineBeautifyRules.push(this.getBuiltinStatusBarRule());
+        needSaveMigration = true;
+      } else if (typeof builtinInList.enabled !== 'boolean') {
+        // 旧版迁移：enabled 字段不存在时设为 true
+        builtinInList.enabled = true;
+        needSaveMigration = true;
+      }
+      if (needSaveMigration) {
+        await db.sessions.update(activeSessionId, {
+          cotRegexRules: this.customRegexRules,
+          offlineBeautifyRules: this.offlineBeautifyRules
+        });
+      }
 
       // 提取当前 Session 绑定的提示词文本与预设 ID
       this.currentPromptPresetId = sess.promptPresetId || null;
@@ -645,6 +689,7 @@
       }
 
       // 3. 自定义正则流水线【仅在对白正文 cleanText】上运行，实现物理级零冲突
+      // 注意：线下美化正则已独立到 offlineBeautifyRules，不在此处运行
       if (this.customRegexRules && this.customRegexRules.length > 0) {
         this.customRegexRules.forEach(rule => {
           if (!rule.enabled) return;
@@ -660,13 +705,14 @@
       return { thought, cleanText };
     },
 
-    // 添加自定义正则规则
+    // 添加自定义正则规则 (仅 'other' 类型 - 纯文本替换，属于思维链正则管道)
     addCustomRegexRule: function() {
       showCustomPrompt("请输入正则规则名称", "例如：清理未闭合动作括号", (name) => {
         if (!name || !name.trim()) return;
         const newRule = {
           id: 'regex_' + Date.now(),
           name: name.trim(),
+          type: 'other',
           pattern: '\\([（\\s]*动作[：:]\\s*([^\\)]+)[）\\)]',
           flags: 'gi',
           replacement: '$1',
@@ -677,7 +723,372 @@
       });
     },
 
-    // 查看/编辑自定义正则 (包含 Pattern 查找正则与 Replacement 替换文本)
+    // ====================================================================
+    //        线下美化正则 (与思维链完全解耦：独立存储 / 独立开关 / 自动保存)
+    // ====================================================================
+
+    // 内置状态栏规则定义 (单一数据源，避免重复定义)
+    getBuiltinStatusBarRule: function() {
+      return {
+        id: 'builtin_status_bar',
+        name: '状态栏 (好感度/兴奋值/心声)',
+        isBuiltin: true,
+        pattern: '\\[STATUS_BAR\\]([^|]+)\\|好感度:(\\d+)\\|兴奋值:(\\d+)\\|心声:([\\s\\S]*?)\\[\\/STATUS_BAR\\]',
+        flags: 'gi',
+        replacement: '<div class="chat-offline-status-bar"><div class="chat-offline-status-npc">$1</div><div class="chat-offline-status-row"><span class="chat-offline-status-label">好感度</span><div class="chat-offline-status-meter"><div class="chat-offline-status-fill" style="width:$2%"></div></div><span class="chat-offline-status-val">$2</span></div><div class="chat-offline-status-row"><span class="chat-offline-status-label">兴奋值</span><div class="chat-offline-status-meter"><div class="chat-offline-status-fill chat-offline-status-fill-excited" style="width:$3%"></div></div><span class="chat-offline-status-val">$3</span></div><div class="chat-offline-status-row chat-offline-status-thought"><span class="chat-offline-status-label">心声</span><span class="chat-offline-status-thought-text">$4</span></div></div>',
+        promptHint: '【最高优先级格式要求 - 每轮必须严格遵守】\n你在每轮白描回复的【最末尾】，必须输出一个状态栏标记。这是强制要求，不可省略，不可遗忘。\n\n格式（必须完全一致）：\n[STATUS_BAR]角色名|好感度:0-100的整数|兴奋值:0-100的整数|心声:该角色此刻内心真实想法[/STATUS_BAR]\n\n完整示例（白描正文 + 末尾标记）：\n陆季青接过咖啡，指尖碰到纸杯时顿了一下。他低头看了眼杯身上的字，嘴角几不可察地勾了一下。\n"美式？你还记得。"\n[STATUS_BAR]陆季青|好感度:65|兴奋值:40|心声:她居然记得我喝美式。[/STATUS_BAR]\n\n规则：\n1. 竖线 | 必须是半角\n2. 冒号 : 必须是半角\n3. 好感度和兴奋值必须是 0-100 的整数\n4. 标记必须成对出现：[STATUS_BAR]开头，[/STATUS_BAR]结尾\n5. 标记放在白描正文的最末尾，不要放在中间\n6. 这个标记不是文案的一部分，是额外的状态信息，会被前端解析为可视化状态栏',
+        enabled: true
+      };
+    },
+
+    // 自动保存线下美化规则到 DB (无需点击思维链保存按钮)
+    saveOfflineBeautifyRules: async function() {
+      if (!activeSessionId) return;
+      await db.sessions.update(activeSessionId, {
+        offlineBeautifyRules: JSON.parse(JSON.stringify(this.offlineBeautifyRules || []))
+      });
+    },
+
+    // 独立加载线下美化规则 (供渲染层调用，不覆盖思维链正则内存状态)
+    // 合并 cotRegexRules 中的旧版美化规则，确保 builtin_status_bar 始终存在
+    loadOfflineBeautifyRules: async function(sessionId) {
+      if (!sessionId) return;
+      const sess = await db.sessions.get(sessionId);
+      let rules = (sess && sess.offlineBeautifyRules && Array.isArray(sess.offlineBeautifyRules))
+        ? JSON.parse(JSON.stringify(sess.offlineBeautifyRules))
+        : [];
+
+      let needSave = false;
+
+      // 兼容迁移：合并 cotRegexRules 中的 offlineBeautify 规则 (第一版遗留)
+      if (sess && sess.cotRegexRules && Array.isArray(sess.cotRegexRules)) {
+        const cotBeautify = sess.cotRegexRules.filter(r => r.type === 'offlineBeautify');
+        if (cotBeautify.length > 0) {
+          rules = rules.concat(cotBeautify);
+          const remainingCot = sess.cotRegexRules.filter(r => r.type !== 'offlineBeautify');
+          await db.sessions.update(sessionId, { cotRegexRules: remainingCot });
+          needSave = true;
+        }
+      }
+
+      // 迁移旧版 preset_status_bar → builtin_status_bar
+      const oldIdx = rules.findIndex(r => r.id === 'preset_status_bar');
+      if (oldIdx >= 0) {
+        rules[oldIdx].id = 'builtin_status_bar';
+        rules[oldIdx].isBuiltin = true;
+        rules[oldIdx].name = '状态栏 (好感度/兴奋值/心声)';
+        needSave = true;
+      }
+
+      // 确保 builtin_status_bar 始终存在 (默认开启，用户可手动关闭)
+      const existingBuiltinIdx = rules.findIndex(r => r.id === 'builtin_status_bar');
+      if (existingBuiltinIdx === -1) {
+        rules.push(this.getBuiltinStatusBarRule());
+        needSave = true;
+      } else {
+        // 同步最新的 pattern/replacement/promptHint (防止旧版规则格式过期)，保留用户设置的 enabled 状态
+        const builtin = rules[existingBuiltinIdx];
+        const latest = this.getBuiltinStatusBarRule();
+        const oldEnabled = builtin.enabled;
+        builtin.pattern = latest.pattern;
+        builtin.replacement = latest.replacement;
+        builtin.promptHint = latest.promptHint;
+        builtin.name = latest.name;
+        builtin.flags = latest.flags;
+        builtin.isBuiltin = true;
+        // 旧版迁移：若 enabled 字段不存在 (旧数据)，默认设为 true
+        if (typeof builtin.enabled !== 'boolean') {
+          builtin.enabled = true;
+          needSave = true;
+        }
+      }
+
+      this.offlineBeautifyRules = rules;
+      if (needSave) {
+        await db.sessions.update(sessionId, { offlineBeautifyRules: rules });
+      }
+      console.log('[OB] loadOfflineBeautifyRules:', rules.length, 'rules,', rules.filter(r => r.enabled).length, 'enabled');
+    },
+
+    // 添加线下美化正则规则 (打开单卡片三字段编辑弹层)
+    addOfflineBeautifyRule: function() {
+      this.openOfflineBeautifyEditor(null);
+    },
+
+    // 内置状态栏开关切换 (始终存在的内置规则，无需添加按钮)
+    toggleBuiltinStatusBar: async function(enabled) {
+      let rule = this.offlineBeautifyRules.find(r => r.id === 'builtin_status_bar');
+      if (!rule) {
+        rule = this.getBuiltinStatusBarRule();
+        this.offlineBeautifyRules.push(rule);
+      }
+      rule.enabled = enabled;
+      await this.saveOfflineBeautifyRules();
+      console.log('[OB] toggleBuiltinStatusBar:', enabled, '→ saved');
+    },
+
+    // 打开线下美化正则编辑弹层 (单卡片三字段：editIdx=null 为新建，否则编辑)
+    openOfflineBeautifyEditor: function(editIdx) {
+      const overlay = document.getElementById("offline-beautify-edit-overlay");
+      const titleEl = document.getElementById("offline-beautify-edit-title");
+      const idxEl = document.getElementById("ob-edit-index");
+      const nameEl = document.getElementById("ob-edit-name");
+      const patternEl = document.getElementById("ob-edit-pattern");
+      const replEl = document.getElementById("ob-edit-replacement");
+      const promptEl = document.getElementById("ob-edit-prompt");
+      if (!overlay) return;
+
+      if (editIdx === null || editIdx === undefined) {
+        // 新建
+        titleEl.innerText = "新建线下美化正则";
+        idxEl.value = "";
+        nameEl.value = "";
+        patternEl.value = "";
+        replEl.value = "";
+        promptEl.value = "";
+      } else {
+        // 编辑
+        const rule = this.offlineBeautifyRules[editIdx];
+        if (!rule) return;
+        titleEl.innerText = "编辑线下美化正则";
+        idxEl.value = String(editIdx);
+        nameEl.value = rule.name || "";
+        patternEl.value = rule.pattern || "";
+        replEl.value = rule.replacement !== undefined ? rule.replacement : "";
+        promptEl.value = rule.promptHint || "";
+      }
+      overlay.classList.add("active");
+    },
+
+    // 保存线下美化正则 (从弹层表单读取并写入内存+DB)
+    saveOfflineBeautifyFromForm: async function() {
+      const idxEl = document.getElementById("ob-edit-index");
+      const nameEl = document.getElementById("ob-edit-name");
+      const patternEl = document.getElementById("ob-edit-pattern");
+      const replEl = document.getElementById("ob-edit-replacement");
+      const promptEl = document.getElementById("ob-edit-prompt");
+
+      const name = nameEl.value.trim();
+      const pattern = patternEl.value.trim();
+      const replacement = replEl.value;
+      const promptHint = promptEl.value;
+
+      if (!name) { showToast("请填写名称！"); return; }
+      if (!pattern) { showToast("请填写查找正则！"); return; }
+
+      // 验证正则有效性
+      try {
+        new RegExp(pattern, 'gi');
+      } catch(e) {
+        showToast("正则表达式语法错误：" + e.message);
+        return;
+      }
+
+      const idxVal = idxEl.value;
+      if (idxVal === "") {
+        // 新建
+        this.offlineBeautifyRules.push({
+          id: 'ob_' + Date.now(),
+          name, pattern, replacement,
+          flags: 'gi',
+          promptHint,
+          enabled: true
+        });
+      } else {
+        // 编辑
+        const idx = Number(idxVal);
+        if (this.offlineBeautifyRules[idx]) {
+          this.offlineBeautifyRules[idx].name = name;
+          this.offlineBeautifyRules[idx].pattern = pattern;
+          this.offlineBeautifyRules[idx].replacement = replacement;
+          this.offlineBeautifyRules[idx].promptHint = promptHint;
+        }
+      }
+
+      await this.saveOfflineBeautifyRules();
+      document.getElementById("offline-beautify-edit-overlay").classList.remove("active");
+      this.renderOfflineBeautifySection();
+      showToast("线下美化正则已保存");
+    },
+
+    // 编辑线下美化正则 (打开弹层)
+    editOfflineBeautifyRule: function(idx) {
+      this.openOfflineBeautifyEditor(idx);
+    },
+
+    // 删除线下美化正则
+    deleteOfflineBeautifyRule: function(idx) {
+      this.offlineBeautifyRules.splice(idx, 1);
+      this.saveOfflineBeautifyRules();
+      this.renderOfflineBeautifySection();
+    },
+
+    // 切换线下美化正则开关 (自动保存)
+    toggleOfflineBeautifyRule: function(idx, enabled) {
+      if (this.offlineBeautifyRules[idx]) {
+        this.offlineBeautifyRules[idx].enabled = enabled;
+        this.saveOfflineBeautifyRules();
+      }
+    },
+
+    // 线下美化正则渲染引擎 (占位符技术保护 HTML，类似快穿局美化正则)
+    // 返回 HTML 字符串；若无任何线下美化规则则返回 null，调用方走默认 escapeHtml
+    // 不依赖思维链开关：只要存在线下美化规则即渲染（enabled 仅控制 prompt 注入，不影响渲染）
+    applyOfflineBeautifyRules: function(text) {
+      if (!text) return null;
+      // 关键：开关(enabled)仅控制是否向 AI 注入 promptHint，不影响渲染。
+      // 即关闭某条美化正则后，AI 不再被要求按该正则输出，但历史已渲染的状态栏仍正常渲染。
+      const rules = (this.offlineBeautifyRules || []).filter(r => r.pattern);
+      if (rules.length === 0) {
+        return null;
+      }
+
+      let content = String(text);
+      const htmlChunks = [];
+      const stash = (html) => { htmlChunks.push(html); return '\u0000' + (htmlChunks.length - 1) + '\u0000'; };
+
+      for (const rule of rules) {
+        try {
+          const re = new RegExp(rule.pattern, rule.flags || 'g');
+          content = content.replace(re, function() {
+            let rep = rule.replacement || '';
+            // 捕获组内容来自 AI 输出，必须先 HTML 转义，否则会撑破 replacement 的 HTML 结构
+            // replace 回调参数结构: [match, p1, p2, ..., pN, offset, string, groups?]
+            // 只遍历捕获组 (arguments[1] 到 arguments[arguments.length-3])，跳过 offset(数字) 和 string
+            const captureCount = Math.max(0, arguments.length - 3);
+            for (let i = captureCount; i >= 1; i--) {
+              const captured = arguments[i] != null ? String(arguments[i]) : '';
+              rep = rep.split('$' + i).join(escapeHtml(captured));
+            }
+            return stash(rep);
+          });
+        } catch(e) {
+          console.warn("线下美化正则执行失败:", e);
+        }
+      }
+
+      // escape 剩余纯文本
+      content = escapeHtml(content);
+      // 保留换行
+      content = content.replace(/\n/g, '<br>');
+      // 还原占位符为 HTML（渲染在线下大气泡内部）
+      content = content.replace(/\u0000(\d+)\u0000/g, (m, idx) => htmlChunks[parseInt(idx)] || '');
+      return content;
+    },
+
+    // 编译线下美化正则的提示词 (直接从 DB 读取已保存规则，注入到线下 System Prompt)
+    // 合并 offlineBeautifyRules 和 cotRegexRules 中的美化规则 (兼容旧版)
+    buildOfflineBeautifyPromptHints: async function(sessionId) {
+      if (!sessionId) return "";
+      const sess = await db.sessions.get(sessionId);
+      if (!sess) return "";
+      let allRules = [];
+      if (sess.offlineBeautifyRules && Array.isArray(sess.offlineBeautifyRules)) {
+        allRules = allRules.concat(sess.offlineBeautifyRules);
+      }
+      if (sess.cotRegexRules && Array.isArray(sess.cotRegexRules)) {
+        allRules = allRules.concat(sess.cotRegexRules.filter(r => r.type === 'offlineBeautify'));
+      }
+      const hints = allRules
+        .filter(r => r.enabled && r.promptHint && r.promptHint.trim())
+        .map(r => r.promptHint.trim());
+      const result = hints.length > 0 ? hints.join("\n\n") : "";
+      console.log('[OB] buildOfflineBeautifyPromptHints:', hints.length, 'hints,', result ? 'INJECTED' : 'EMPTY');
+      return result;
+    },
+
+    // 渲染独立的"线下美化正则"板块 (可展开收起，内置状态栏，位于思维链内容之下)
+    renderOfflineBeautifySection: function() {
+      const container = document.getElementById("offline-beautify-section");
+      if (!container) return;
+
+      // 确保 builtin_status_bar 规则存在 (内置状态栏，默认存在但关闭)
+      if (!this.offlineBeautifyRules.find(r => r.id === 'builtin_status_bar')) {
+        this.offlineBeautifyRules.push(this.getBuiltinStatusBarRule());
+      }
+
+      // 折叠状态 (默认展开)
+      const isCollapsed = localStorage.getItem('ob_section_collapsed') === 'true';
+
+      // 内置状态栏卡片 (默认开启，可关闭)
+      const builtinRule = this.offlineBeautifyRules.find(r => r.id === 'builtin_status_bar');
+      const builtinHtml = builtinRule ? `
+        <div style="background:#fff; border:1px solid #67e8f9; border-radius:8px; padding:8px; display:flex; align-items:center; justify-content:space-between; gap:6px;">
+          <div style="display:flex; align-items:center; gap:6px; flex:1; overflow:hidden;">
+            <span style="font-size:9px; background:#cffafe; color:#0e7490; padding:2px 6px; border-radius:4px; font-weight:800; flex-shrink:0;">内置</span>
+            <span style="font-size:11px; font-weight:700; color:var(--text-primary);">${escapeHtml(builtinRule.name)}</span>
+          </div>
+          <label class="switch" style="transform:scale(0.85); flex-shrink:0;">
+            <input type="checkbox" ${builtinRule.enabled ? 'checked' : ''} onchange="cotSystem.toggleBuiltinStatusBar(this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      ` : '';
+
+      // 自定义规则卡片 (排除内置状态栏)
+      const customRules = this.offlineBeautifyRules.filter(r => r.id !== 'builtin_status_bar');
+      let customRulesHtml = "";
+      if (customRules.length > 0) {
+        customRulesHtml = customRules.map((rule) => {
+          const realIdx = this.offlineBeautifyRules.indexOf(rule);
+          const promptHintHtml = (rule.promptHint && rule.promptHint.trim())
+            ? `<div style="font-size:10px; background:#f5f3ff; padding:6px; border-radius:6px; color:#6d28d9; border:1px solid #ddd6fe; white-space:pre-wrap; word-break:break-all; max-height:50px; overflow-y:auto; margin-top:4px;"><span style="font-weight:700;">提示词:</span> ${escapeHtml(rule.promptHint.trim())}</div>`
+            : '';
+          return `
+          <div style="background:#fff; border:1px solid #c4b5fd; border-radius:8px; padding:8px; margin-top:6px; display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+              <div style="display:flex; align-items:center; gap:4px; flex:1; overflow:hidden;">
+                <span style="font-size:11px; font-weight:700; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(rule.name)}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                <label class="switch" style="transform:scale(0.8);">
+                  <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="cotSystem.toggleOfflineBeautifyRule(${realIdx}, this.checked)">
+                  <span class="slider"></span>
+                </label>
+                <button class="btn btn-outline" onclick="cotSystem.editOfflineBeautifyRule(${realIdx})" style="padding:2px 6px; font-size:10px; border-radius:4px;">编辑</button>
+                <button class="btn btn-danger-outline" onclick="cotSystem.deleteOfflineBeautifyRule(${realIdx})" style="padding:2px 6px; font-size:10px; border-radius:4px; color:#ef4444; border-color:#fca5a5;">删除</button>
+              </div>
+            </div>
+            ${promptHintHtml}
+          </div>
+        `;}).join("");
+      } else {
+        customRulesHtml = `<div style="font-size:11px; color:var(--text-secondary); padding:6px 0; text-align:center;">暂无自定义美化正则</div>`;
+      }
+
+      const chevronRotation = isCollapsed ? 'rotate(-90deg)' : 'none';
+
+      container.innerHTML = `
+        <div onclick="cotSystem.toggleOfflineBeautifyCollapse()" style="cursor:pointer; user-select:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:12px; font-weight:700; color:#6d28d9; display:flex; align-items:center; gap:4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition: transform 0.2s ease; transform: ${chevronRotation};"><polyline points="6 9 12 15 18 9"/></svg>
+              线下美化正则
+              <span style="font-size:9px; font-weight:600; color:var(--text-secondary); background:#f1f5f9; padding:1px 5px; border-radius:3px;">独立·自动保存</span>
+            </span>
+            <div onclick="event.stopPropagation();">
+              <button class="btn btn-outline" onclick="cotSystem.addOfflineBeautifyRule()" style="padding:3px 8px; font-size:10px; border-radius:6px; font-weight:700; color:#6d28d9; border-color:#c4b5fd;">+ 新建</button>
+            </div>
+          </div>
+        </div>
+        <div id="ob-section-content" style="display:${isCollapsed ? 'none' : 'block'};">
+          <div style="font-size:10px; color:var(--text-secondary); margin-bottom:8px; line-height:1.5;">
+            将 AI 输出的特定标记渲染为 HTML 卡片注入线下大气泡。<b style="color:#6d28d9;">开关仅控制是否向 AI 注入提示词</b>，关闭后 AI 不再按该正则输出，但已渲染的状态栏仍正常显示。无需开启思维链。
+          </div>
+          ${builtinHtml}
+          ${customRulesHtml}
+        </div>
+      `;
+    },
+
+    // 折叠/展开线下美化板块
+    toggleOfflineBeautifyCollapse: function() {
+      const isCollapsed = localStorage.getItem('ob_section_collapsed') === 'true';
+      localStorage.setItem('ob_section_collapsed', !isCollapsed);
+      this.renderOfflineBeautifySection();
+    },
+
+    // 查看/编辑思维链正则 (仅 'other' 类型，纯文本替换)
     editCustomRegexRule: function(idx) {
       const rule = this.customRegexRules[idx];
       if (!rule) return;
@@ -697,9 +1108,20 @@
       this.renderStepsList();
     },
 
-    // 5. 切换 Session 总开关
+    // 5. 切换 Session 总开关（即时持久化，修复「关闭后仍生效」问题）
     toggleSessionCot: function(isChecked) {
-      showToast(isChecked ? "本对话已开启思维链推演" : "本对话已关闭思维链推演");
+      const sid = (typeof activeSessionId !== "undefined") ? activeSessionId : null;
+      if (!sid) {
+        showToast("请先进入一个好友聊天或群聊对话！");
+        return;
+      }
+      db.sessions.update(sid, { cotToggle: isChecked ? 1 : 0 }).then(() => {
+        this.currentSessionCotToggle = !!isChecked;
+        showToast(isChecked ? "本对话已开启思维链推演" : "本对话已关闭思维链推演");
+      }).catch((e) => {
+        console.warn("思维链开关保存失败:", e);
+        showToast("思维链开关保存失败，请重试");
+      });
     },
 
     // 6. 切换 线上 / 线下 模式 Tab
@@ -769,7 +1191,7 @@
         container.appendChild(card);
       });
 
-      // 渲染正则配置板块
+      // 渲染思维链正则配置板块 (仅 'other' 类型，纯文本替换)
       const regexSection = document.createElement("div");
       regexSection.style.cssText = "margin-top:16px; border-top:1.5px dashed var(--border); padding-top:14px;";
 
@@ -777,9 +1199,12 @@
       if (this.customRegexRules && this.customRegexRules.length > 0) {
         customRulesHtml = this.customRegexRules.map((rule, rIdx) => `
           <div style="background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px; margin-top:8px; display:flex; flex-direction:column; gap:6px;">
-            <div style="display:flex; align-items:center; justify-content:space-between;">
-              <span style="font-size:11px; font-weight:700; color:var(--text-primary);">${escapeHtml(rule.name)}</span>
-              <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+              <div style="display:flex; align-items:center; gap:4px; flex:1; overflow:hidden;">
+                <span style="font-size:9px; background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:4px; font-weight:800; flex-shrink:0;">其他</span>
+                <span style="font-size:11px; font-weight:700; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(rule.name)}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                 <label class="switch" style="transform:scale(0.8);">
                   <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="cotSystem.customRegexRules[${rIdx}].enabled = this.checked;">
                   <span class="slider"></span>
@@ -799,7 +1224,7 @@
       }
 
       regexSection.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
           <span style="font-size:12px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:4px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
             正则管道 (Regex Scripts)
@@ -1079,6 +1504,14 @@
         const expandPanel = document.getElementById("chat-expand-panel");
         if (expandPanel) expandPanel.classList.remove("active");
         cotSystem.openPanel();
+      };
+    }
+
+    // 绑定线下美化正则编辑弹层保存按钮
+    const btnSaveOb = document.getElementById("btn-save-offline-beautify");
+    if (btnSaveOb) {
+      btnSaveOb.onclick = async () => {
+        await cotSystem.saveOfflineBeautifyFromForm();
       };
     }
   }

@@ -1158,9 +1158,7 @@
   // 获取全局 API 预设
   async function getGlobalApi() {
     try {
-      const presetId = localStorage.getItem('global_api_preset_id');
-      if (!presetId) return null;
-      const api = await db.api_presets.get(Number(presetId));
+      const api = (window.apiRoutes && typeof window.apiRoutes.resolve === 'function') ? await window.apiRoutes.resolve('encounter') : null;
       if (!api || !api.url || !api.key) return null;
       return {
         url: api.url.replace(/\/$/, ''),
@@ -1175,6 +1173,10 @@
     options = options || {};
     const api = await getGlobalApi();
     if (!api) throw new Error('未配置全局 API，请前往系统设置 - API 协议设置中配置');
+    if (typeof window.fwCallLLM === 'function') {
+      try { return await window.fwCallLLM(api, messages, { temperature: options.temperature != null ? options.temperature : 0.85 }); }
+      catch (e) { /* fall through to original */ }
+    }
     const body = {
       model: api.model,
       messages: messages,

@@ -102,45 +102,95 @@
       return `
         <div id="settings-lv2-tts" class="settings-lv2-panel" style="display:none;">
           <div class="form-group">
-            <label>接口版本</label>
-            <select id="tts-region-select">
-              <option value="cn">国内版 (api.minimax.chat)</option>
-              <option value="intl">国际版 (api.minimaxi.com)</option>
-            </select>
+            <label>语音合成服务商</label>
+            <div id="tts-provider-tabs" style="display:flex; gap:8px; margin-bottom:4px;">
+              <button type="button" class="btn tts-provider-tab active" data-provider="minimax" style="flex:1;">MiniMax</button>
+              <button type="button" class="btn btn-outline tts-provider-tab" data-provider="mossland" style="flex:1;">Mossland</button>
+            </div>
+            <div style="font-size:10px; color:var(--text-secondary);">在哪个分类下点保存，就使用哪个服务商的接口。</div>
           </div>
-          <div class="form-group">
-            <label>自定义接口 URL (留空则按上方版本自动填充)</label>
-            <input type="text" id="tts-custom-url" placeholder="例如 https://api.minimax.chat/v1/t2a_v2">
-          </div>
-          <div class="form-group">
-            <label>MiniMax 个人 ID</label>
-            <input type="text" id="tts-personal-id" placeholder="个人 id">
-          </div>
-          <div class="form-group">
-            <label>Group ID (必填，拼接在接口 URL)</label>
-            <input type="text" id="tts-group-id" placeholder="例如 1234567890">
-          </div>
-          <div class="form-group">
-            <label>API Key (必填)</label>
-            <div style="display:flex; gap:6px; align-items:center;">
-              <input type="password" id="tts-api-key" placeholder="MiniMax API Key" style="flex:1;">
-              <button type="button" class="btn-copy-key" onclick="copyApiKey('tts-api-key')" title="复制 Key" style="width:36px; height:36px; border:1.5px solid var(--border); background:var(--surface); border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary);"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              </button>
+
+          <!-- ===== MiniMax 字段 ===== -->
+          <div id="tts-minimax-fields">
+            <div class="form-group">
+              <label>接口版本</label>
+              <select id="tts-region-select">
+                <option value="cn">国内版 (api.minimax.chat)</option>
+                <option value="intl">国际版 (api.minimaxi.com)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>自定义接口 URL (留空则按上方版本自动填充)</label>
+              <input type="text" id="tts-custom-url" placeholder="例如 https://api.minimax.chat/v1/t2a_v2">
+            </div>
+            <div class="form-group">
+              <label>MiniMax 个人 ID</label>
+              <input type="text" id="tts-personal-id" placeholder="个人 id">
+            </div>
+            <div class="form-group">
+              <label>Group ID (必填，拼接在接口 URL)</label>
+              <input type="text" id="tts-group-id" placeholder="例如 1234567890">
+            </div>
+            <div class="form-group">
+              <label>API Key (必填)</label>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <input type="password" id="tts-api-key" placeholder="MiniMax API Key" style="flex:1;">
+                <button type="button" class="btn-copy-key" onclick="copyApiKey('tts-api-key')" title="复制 Key" style="width:36px; height:36px; border:1.5px solid var(--border); background:var(--surface); border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0;">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary);"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>模型选择</label>
+              <div class="model-row">
+                <select id="tts-model-select"><option value="">请先拉取模型</option></select>
+                <button id="btn-tts-fetch-models" class="btn">拉取</button>
+              </div>
+              <div style="font-size:10px; color:var(--text-secondary); margin-top:4px;">拉取会校验 Group ID 与 Key，并载入 MiniMax T2A 可用模型清单。</div>
             </div>
           </div>
-          <div class="form-group">
-            <label>模型选择</label>
-            <div class="model-row">
-              <select id="tts-model-select"><option value="">请先拉取模型</option></select>
-              <button id="btn-tts-fetch-models" class="btn">拉取</button>
+
+          <!-- ===== Mossland 字段 ===== -->
+          <div id="tts-mossland-fields" style="display:none;">
+            <div class="form-group">
+              <label>接口 URL (必填，已预填官方地址)</label>
+              <input type="text" id="tts-mossland-url" placeholder="https://api.mosi.cn/v1/audio/speech" value="https://api.mosi.cn/v1/audio/speech">
             </div>
-            <div style="font-size:10px; color:var(--text-secondary); margin-top:4px;">拉取会校验 Group ID 与 Key，并载入 MiniMax T2A 可用模型清单。</div>
+            <div class="form-group">
+              <label>API Key (必填，已预填)</label>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <input type="password" id="tts-mossland-api-key" placeholder="Mossland API Key" value="sk-cf1a1f12048b20af1490b899032e976ec7aa3c3b688ba038" style="flex:1;">
+                <button type="button" class="btn-copy-key" onclick="copyApiKey('tts-mossland-api-key')" title="复制 Key" style="width:36px; height:36px; border:1.5px solid var(--border); background:var(--surface); border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0;">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary);"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>模型 (已预填 moss-tts)</label>
+              <input type="text" id="tts-mossland-model" placeholder="例如 moss-tts" value="moss-tts">
+              <div style="font-size:10px; color:var(--text-secondary); margin-top:4px;">官方 TTS 模型：moss-tts（默认）/ moss-speech / moss-ttsd。音色 ID 为 UUID 格式，可通过「拉取音色」按钮获取。</div>
+            </div>
+            <div class="form-group">
+              <label>音色 ID (UUID，可拉取或手填)</label>
+              <div class="model-row">
+                <input type="text" id="tts-mossland-voice-input" list="tts-mossland-voice-list" placeholder="点击右侧拉取，或直接填写 UUID">
+                <button id="btn-tts-mossland-fetch-voices" class="btn">拉取音色</button>
+              </div>
+              <datalist id="tts-mossland-voice-list"></datalist>
+              <div style="font-size:10px; color:var(--text-secondary); margin-top:4px;">拉取后可下拉选择，也可直接手动填写 UUID（含自行复刻的音色）。该值用于「测试合成」；对话详情中的音色 ID 可单独覆盖。</div>
+            </div>
+            <div class="form-group" style="background: var(--primary-light); padding: 10px; border-radius: 10px; border: 1px solid var(--border); font-size:11px; color:var(--text-secondary);">
+              <div style="font-weight:700; color:var(--text-primary); margin-bottom:4px;">Mossland 接入说明</div>
+              • 协议：OpenAI 兼容（/v1/audio/speech），音色 ID 为 UUID 格式，可在上方拉取或前往 studio.mosi.cn 查看。<br>
+              • <span style="color:#16a34a;font-weight:700;">APK 用户</span>：已通过原生网络桥绕过跨域限制，直接用预填地址即可，无需任何额外配置。<br>
+              • <span style="color:#dc2626;font-weight:700;">网页版用户</span>：api.mosi.cn 的 CORS 仅允许 localhost。本地调试（localhost 访问）可用；部署到域名时需在同机运行 <code style="background:rgba(0,0,0,0.08);padding:1px 4px;border-radius:3px;">node start-moss-tts-proxy.js</code> 并把接口 URL 改为 <code style="background:rgba(0,0,0,0.08);padding:1px 4px;border-radius:3px;">http://你的域名:3001/v1/audio/speech</code>。
+            </div>
           </div>
+
           <div class="form-group" style="background: var(--surface); padding: 10px; border-radius: 10px; border: 1px solid var(--border); font-size:11px; color:var(--text-secondary);">
             <div style="font-weight:700; color:var(--text-primary); margin-bottom:4px;">音色 ID 说明</div>
-            在「聊天 - 对话详情」开启 TTS 后填写音色 ID（voice_id）。系统音色示例：
-            <span style="color:var(--primary);">male-qn-jingying / female-yujie / female-tianmei / audiobook_female_1</span> 等。也可填写自行复刻的音色 ID。
+            在「聊天 - 对话详情」开启 TTS 后填写音色 ID（voice_id）。MiniMax 系统音色示例：
+            <span style="color:var(--primary);">male-qn-jingying / female-yujie / female-tianmei / audiobook_female_1</span> 等；Mossland 音色为 UUID 格式（如 <span style="color:var(--primary);">fa97f355-5d9e-4df5-aa84-bd62902f9cfe</span>），可在上方「拉取音色」获取或前往 studio.mosi.cn 查看。也可填写自行复刻的音色 ID。
           </div>
           <div class="form-actions">
             <button id="btn-tts-test" class="btn btn-outline">测试合成</button>
@@ -148,6 +198,23 @@
           </div>
         </div>
       `;
+    },
+
+    // 当前编辑中的服务商（minimax / mossland）
+    _currentProvider: "minimax",
+
+    // 切换服务商字段显隐
+    switchProvider: function (provider) {
+      this._currentProvider = provider;
+      const mm = document.getElementById("tts-minimax-fields");
+      const ms = document.getElementById("tts-mossland-fields");
+      if (mm) mm.style.display = provider === "minimax" ? "" : "none";
+      if (ms) ms.style.display = provider === "mossland" ? "" : "none";
+      document.querySelectorAll(".tts-provider-tab").forEach(function (t) {
+        const on = t.getAttribute("data-provider") === provider;
+        t.classList.toggle("active", on);
+        t.classList.toggle("btn-outline", !on);
+      });
     },
 
     /**
@@ -165,14 +232,30 @@
       const customUrlEl = document.getElementById("tts-custom-url");
       if (customUrlEl) customUrlEl.value = cfg.customUrl || "";
 
+      // 回填 Mossland 字段
+      const mUrl = document.getElementById("tts-mossland-url");
+      if (mUrl) mUrl.value = cfg.mosslandUrl || "https://api.mosi.cn/v1/audio/speech";
+      const mKey = document.getElementById("tts-mossland-api-key");
+      if (mKey) mKey.value = cfg.mosslandApiKey || "";
+      const mModel = document.getElementById("tts-mossland-model");
+      if (mModel) mModel.value = cfg.mosslandModel || "moss-tts";
+
       // 回填模型下拉
       const sel = document.getElementById("tts-model-select");
       if (cfg.model && sel) {
         sel.innerHTML = MINIMAX_MODELS.map(m => `<option value="${m.id}"${m.id === cfg.model ? " selected" : ""}>${m.label}</option>`).join("");
       }
 
+      // 服务商切换：回填到上次保存的服务商
+      this.switchProvider(cfg.provider === "mossland" ? "mossland" : "minimax");
+      document.querySelectorAll(".tts-provider-tab").forEach(t => {
+        t.onclick = () => ttsSystem.switchProvider(t.getAttribute("data-provider"));
+      });
+
       const btnFetch = document.getElementById("btn-tts-fetch-models");
       if (btnFetch) btnFetch.onclick = () => ttsSystem.fetchModels();
+      const btnMossFetch = document.getElementById("btn-tts-mossland-fetch-voices");
+      if (btnMossFetch) btnMossFetch.onclick = () => ttsSystem.fetchMosslandVoices();
       const btnTest = document.getElementById("btn-tts-test");
       if (btnTest) btnTest.onclick = () => ttsSystem.testSynthesize();
       const btnSave = document.getElementById("btn-tts-save");
@@ -219,15 +302,107 @@
     },
 
     /**
+     * 拉取 Mossland 音色列表（UUID 音色 ID）。
+     * 调用 GET /v1/audio/voices，返回当前账号下可用音色。
+     */
+    fetchMosslandVoices: async function () {
+      const cfg = ttsSystem._readForm();
+      if (!cfg.mosslandUrl || !cfg.mosslandApiKey) { showToast("请先填写 Mossland URL 与 API Key"); return; }
+      const input = document.getElementById("tts-mossland-voice-input");
+      const list = document.getElementById("tts-mossland-voice-list");
+      if (input) input.placeholder = "拉取中…";
+      showToast("正在拉取 Mossland 音色列表…");
+      const baseUrl = cfg.mosslandUrl.replace(/\/+$/, "").replace(/\/audio\/speech$/, "/audio/voices");
+      const headers = { "Authorization": "Bearer " + cfg.mosslandApiKey };
+
+      const fillVoices = (json) => {
+        const voices = (json && json.data) || [];
+        if (voices.length === 0) {
+          if (input) input.placeholder = "无可用音色，请直接填写 UUID 或前往 studio.mosi.cn 创建";
+          showToast("账号下暂无音色，请前往 studio.mosi.cn 创建");
+          return false;
+        }
+        if (list) {
+          list.innerHTML = voices.map(v => {
+            const name = String(v.name || v.id).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+            return `<option value="${v.id}">${name}</option>`;
+          }).join("");
+        }
+        if (input) input.placeholder = "已拉取 " + voices.length + " 个音色，可下拉选择或直接填写 UUID";
+        showToast("已拉取 " + voices.length + " 个音色，可选择或手动填写");
+        return true;
+      };
+
+      const failMsg = (msg) => {
+        if (input) input.placeholder = "拉取失败，可手动填写 UUID";
+        showToast(msg);
+      };
+
+      try {
+        // 优先通道：APK 原生 HTTP 桥（绕过 CORS）
+        if (window.AndroidMCP && typeof window.AndroidMCP.sendNativeHttpRequest === "function") {
+          try {
+            const nativeResStr = window.AndroidMCP.sendNativeHttpRequest(baseUrl, "GET", JSON.stringify(headers), "");
+            if (nativeResStr) {
+              const r = JSON.parse(nativeResStr);
+              if (r.status >= 200 && r.status < 300 && r.body) {
+                const json = JSON.parse(r.body);
+                if (fillVoices(json)) return;
+              }
+              console.warn("[TTS Mossland] 原生桥拉取音色异常(status=" + r.status + ")，回退 fetch");
+            }
+          } catch (nativeErr) {
+            console.warn("[TTS Mossland] 原生桥拉取音色异常，回退 fetch:", nativeErr);
+          }
+        }
+
+        // 回退通道：浏览器 fetch
+        const resp = await fetch(baseUrl, {
+          method: "GET",
+          headers: headers
+        });
+        if (!resp.ok) {
+          let detail = ""; try { detail = await resp.text(); } catch (e) {}
+          failMsg("拉取音色失败：HTTP " + resp.status + (detail ? " " + detail.slice(0, 120) : ""));
+          return;
+        }
+        const json = await resp.json();
+        fillVoices(json);
+      } catch (e) {
+        failMsg("网络异常：" + (e && e.message ? e.message : e));
+      }
+    },
+
+    /**
      * 测试合成：用当前表单配置合成一句话并播放。
      */
     testSynthesize: async function () {
       const cfg = ttsSystem._readForm();
+      if (cfg.provider === "mossland") {
+        if (!cfg.mosslandUrl || !cfg.mosslandApiKey) { showToast("请先填写 Mossland URL 与 API Key"); return; }
+        // 从输入框读取 UUID 音色（可拉取选择或手填）
+        const voiceInput = document.getElementById("tts-mossland-voice-input");
+        const voiceId = (voiceInput && voiceInput.value.trim()) || "";
+        if (!voiceId) { showToast("请填写或拉取选择一个音色 UUID"); return; }
+        showToast("正在合成测试语音…");
+        try {
+          const blob = await ttsSystem.synthesize("你好，这是 TTS 语音测试。", voiceId, {
+            provider: "mossland",
+            mosslandUrl: cfg.mosslandUrl, apiKey: cfg.mosslandApiKey, model: cfg.mosslandModel || "moss-tts"
+          });
+          ttsSystem.playBlob(blob);
+          showToast("测试语音已生成并播放");
+        } catch (e) {
+          showToast("合成失败：" + (e && e.message ? e.message : e));
+        }
+        return;
+      }
       if (!cfg.groupId || !cfg.apiKey) { showToast("请先填写并保存 Group ID 与 API Key"); return; }
       const model = (document.getElementById("tts-model-select").value) || "speech-02-hd";
       showToast("正在合成测试语音…");
       try {
         const blob = await ttsSystem.synthesize("你好，这是 TTS 语音测试。", "male-qn-jingying", {
+          provider: "minimax",
           groupId: cfg.groupId, apiKey: cfg.apiKey, model: model,
           region: cfg.region, customUrl: cfg.customUrl
         });
@@ -240,21 +415,29 @@
 
     _readForm: function () {
       return {
+        provider: this._currentProvider === "mossland" ? "mossland" : "minimax",
         region: (document.getElementById("tts-region-select") || {}).value === "intl" ? "intl" : "cn",
-        customUrl: (document.getElementById("tts-custom-url").value || "").trim(),
-        personalId: (document.getElementById("tts-personal-id").value || "").trim(),
-        groupId: (document.getElementById("tts-group-id").value || "").trim(),
-        apiKey: (document.getElementById("tts-api-key").value || "").trim(),
-        model: (document.getElementById("tts-model-select").value || "").trim()
+        customUrl: ((document.getElementById("tts-custom-url") || {}).value || "").trim(),
+        personalId: ((document.getElementById("tts-personal-id") || {}).value || "").trim(),
+        groupId: ((document.getElementById("tts-group-id") || {}).value || "").trim(),
+        apiKey: ((document.getElementById("tts-api-key") || {}).value || "").trim(),
+        model: ((document.getElementById("tts-model-select") || {}).value || "").trim(),
+        mosslandUrl: ((document.getElementById("tts-mossland-url") || {}).value || "").trim(),
+        mosslandApiKey: ((document.getElementById("tts-mossland-api-key") || {}).value || "").trim(),
+        mosslandModel: ((document.getElementById("tts-mossland-model") || {}).value || "").trim()
       };
     },
 
     saveFromForm: function () {
       const cfg = ttsSystem._readForm();
-      if (!cfg.groupId || !cfg.apiKey) { showToast("Group ID 与 API Key 不能为空"); return; }
+      if (cfg.provider === "mossland") {
+        if (!cfg.mosslandUrl || !cfg.mosslandApiKey) { showToast("Mossland URL 与 API Key 不能为空"); return; }
+      } else {
+        if (!cfg.groupId || !cfg.apiKey) { showToast("Group ID 与 API Key 不能为空"); return; }
+      }
       cfg.updatedAt = Date.now();
       saveConfig(cfg);
-      showToast("TTS 语音配置已保存");
+      showToast("TTS 语音配置已保存（" + (cfg.provider === "mossland" ? "Mossland" : "MiniMax") + "）");
     },
 
     /**
@@ -272,15 +455,94 @@
     },
 
     /**
-     * 调用 MiniMax T2A v2 接口。返回 { ok, blob, error, raw }
+     * 调用 TTS 接口。返回 { ok, blob, error, raw }
+     * - mossland：OpenAI 兼容协议（/v1/audio/speech），请求体 {model,input,voice}，响应为 MP3 二进制流
+     * - minimax：T2A v2 协议，URL 追加 ?GroupId=，响应为 JSON（hex 音频）
+     *
+     * APK 环境（window.AndroidMCP 存在）下，Mossland 请求优先走 Kotlin 原生 HTTP 桥，
+     * 100% 绕过浏览器 CORS 限制（解决 file:// origin 被 api.mosi.cn 403 拒绝的问题）。
      */
     _callT2a: async function (opts) {
-      const groupId = opts.groupId;
+      const provider = opts.provider === "mossland" ? "mossland" : "minimax";
       const apiKey = opts.apiKey;
       const model = opts.model || "speech-02-hd";
       const text = opts.text || "";
       const voiceId = opts.voiceId || "male-qn-jingying";
 
+      // ===== Mossland：OpenAI 兼容协议 =====
+      if (provider === "mossland") {
+        const rawUrl = (opts.mosslandUrl || "").trim().replace(/\/+$/, "");
+        if (!rawUrl) return { ok: false, error: "Mossland 接口 URL 未配置" };
+        if (!apiKey) return { ok: false, error: "Mossland API Key 未配置" };
+        const mossBody = {
+          model: model || "moss-tts",
+          input: text,
+          voice: voiceId
+        };
+        const headers = {
+          "Authorization": "Bearer " + apiKey,
+          "Content-Type": "application/json"
+        };
+        const bodyStr = JSON.stringify(mossBody);
+
+        // 优先通道：APK 原生 HTTP 桥（绕过 CORS）
+        if (window.AndroidMCP && typeof window.AndroidMCP.sendNativeHttpRequestBinary === "function") {
+          try {
+            const nativeResStr = window.AndroidMCP.sendNativeHttpRequestBinary(rawUrl, "POST", JSON.stringify(headers), bodyStr);
+            if (nativeResStr) {
+              const r = JSON.parse(nativeResStr);
+              if (r.status >= 200 && r.status < 300 && r.bodyBase64) {
+                const dataUrl = "data:" + (r.contentType || "audio/mpeg") + ";base64," + r.bodyBase64;
+                const blob = await (await fetch(dataUrl)).blob();
+                if (blob && blob.size > 0) return { ok: true, blob: blob, raw: null };
+              }
+              // 原生请求失败，带详细信息回退
+              let errDetail = r.error || "";
+              if (r.bodyBase64) {
+                try { errDetail = atob(r.bodyBase64).slice(0, 200); } catch (e) {}
+              }
+              // 如果是 4xx，说明配置问题，直接返回错误；网络错误才回退 fetch
+              if (r.status >= 400 && r.status < 500) {
+                return { ok: false, error: "HTTP " + r.status + (errDetail ? " " + errDetail : "") };
+              }
+              console.warn("[TTS Mossland] 原生桥返回异常(status=" + r.status + ")，回退 fetch");
+            }
+          } catch (nativeErr) {
+            console.warn("[TTS Mossland] 原生桥异常，回退 fetch:", nativeErr);
+          }
+        }
+
+        // 回退通道：浏览器 fetch（网页版 localhost 调试或已部署代理时可用）
+        let resp;
+        try {
+          resp = await fetch(rawUrl, {
+            method: "POST",
+            headers: headers,
+            body: bodyStr
+          });
+        } catch (netErr) {
+          return { ok: false, error: "网络请求失败：" + (netErr && netErr.message ? netErr.message : netErr) + "（APK 用户请确认已更新到最新版；网页版请用 localhost 调试或部署代理）" };
+        }
+        if (!resp.ok) {
+          let detail = "";
+          try { detail = await resp.text(); } catch (e) {}
+          return { ok: false, error: "HTTP " + resp.status + (detail ? " " + detail.slice(0, 200) : "") };
+        }
+        // Mossland 直接返回 MP3 二进制流（Content-Type: audio/mpeg）
+        const ctype = resp.headers.get("content-type") || "";
+        if (ctype.indexOf("audio") === -1 && ctype.indexOf("octet-stream") === -1) {
+          // 非音频响应（可能是 JSON 错误），尝试解析
+          let detail = "";
+          try { detail = await resp.text(); } catch (e) {}
+          return { ok: false, error: "未返回音频数据：" + detail.slice(0, 200) };
+        }
+        const blob = await resp.blob();
+        if (!blob || blob.size === 0) return { ok: false, error: "未返回音频数据" };
+        return { ok: true, blob: blob, raw: null };
+      }
+
+      // ===== MiniMax：T2A v2 协议 =====
+      const groupId = opts.groupId;
       const baseCfg = { region: opts.region, customUrl: opts.customUrl };
       const baseUrl = opts.baseUrl || resolveApiBaseUrl(baseCfg);
       const url = baseUrl + "?GroupId=" + encodeURIComponent(groupId);
@@ -333,15 +595,22 @@
     synthesize: async function (text, voiceId, opts) {
       opts = opts || {};
       const cfg = getConfig();
-      const groupId = opts.groupId || cfg.groupId;
-      const apiKey = opts.apiKey || cfg.apiKey;
-      const model = opts.model || cfg.model || "speech-02-hd";
+      const provider = opts.provider || cfg.provider || "minimax";
+      const apiKey = opts.apiKey || (provider === "mossland" ? cfg.mosslandApiKey : cfg.apiKey);
       const region = opts.region || cfg.region;
       const customUrl = opts.customUrl !== undefined ? opts.customUrl : cfg.customUrl;
-      const res = await ttsSystem._callT2a({
-        groupId: groupId, apiKey: apiKey, model: model, text: text, voiceId: voiceId,
+      const callOpts = {
+        provider: provider, apiKey: apiKey, text: text, voiceId: voiceId,
         region: region, customUrl: customUrl
-      });
+      };
+      if (provider === "mossland") {
+        callOpts.mosslandUrl = opts.mosslandUrl || cfg.mosslandUrl;
+        callOpts.model = opts.model || cfg.mosslandModel || "moss-tts";
+      } else {
+        callOpts.groupId = opts.groupId || cfg.groupId;
+        callOpts.model = opts.model || cfg.model || "speech-02-hd";
+      }
+      const res = await ttsSystem._callT2a(callOpts);
       if (!res.ok) throw new Error(res.error || "合成失败");
       return res.blob;
     },
@@ -382,13 +651,21 @@
      */
     getOrSynthesize: async function (text, voiceId, sessionId) {
       const cfg = getConfig();
-      if (!cfg.groupId || !cfg.apiKey) {
-        showToast("TTS 未配置，请在设置中填写 MiniMax 凭据");
-        return null;
+      const provider = cfg.provider === "mossland" ? "mossland" : "minimax";
+      if (provider === "mossland") {
+        if (!cfg.mosslandUrl || !cfg.mosslandApiKey) {
+          showToast("TTS 未配置，请在设置中填写 Mossland URL 与 API Key");
+          return null;
+        }
+      } else {
+        if (!cfg.groupId || !cfg.apiKey) {
+          showToast("TTS 未配置，请在设置中填写 MiniMax 凭据");
+          return null;
+        }
       }
-      const model = cfg.model || "speech-02-hd";
+      const model = provider === "mossland" ? (cfg.mosslandModel || "moss-tts") : (cfg.model || "speech-02-hd");
       const db = getTtsDb();
-      const cacheKey = hashStr(model + "|" + voiceId + "|" + text);
+      const cacheKey = hashStr(provider + "|" + model + "|" + voiceId + "|" + text);
 
       if (db) {
         try {

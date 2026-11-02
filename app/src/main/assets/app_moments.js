@@ -944,19 +944,26 @@ ${imagesText}
 请直接进行动作反馈。`;
 
     try {
-      const response = await fetch(`${api.url}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-        body: JSON.stringify({
-          model: api.model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.8
-        })
-      });
-
-      if (!response.ok) return;
-      const result = await response.json();
-      const reply = result.choices[0].message.content.trim();
+      let reply = null;
+      if (typeof window.fwCallLLM === "function") {
+        try {
+          reply = await window.fwCallLLM(api, [{ role: "user", content: prompt }], { temperature: 0.8 });
+        } catch(e) { /* fall through to original fetch */ }
+      }
+      if (reply === null) {
+        const response = await fetch(`${api.url}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+          body: JSON.stringify({
+            model: api.model,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.8
+          })
+        });
+        if (!response.ok) return;
+        const result = await response.json();
+        reply = result.choices[0].message.content.trim();
+      }
 
       const lines = reply.split("\n").map(l => l.trim()).filter(l => l.length > 0);
       let isLiked = false;
@@ -1069,19 +1076,28 @@ ${parentCommentText ? `这是对 [${parentCommenterName}] 之前评论（“ ${p
 - 如果你想点赞动态，请另起一行输出：[LIKE]`;
 
         try {
-          const response = await fetch(`${api.url}/chat/completions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-            body: JSON.stringify({
-              model: api.model,
-              messages: [{ role: "user", content: prompt }],
-              temperature: 0.8
-            })
-          });
-
-          if (response.ok) {
-            const res = await response.json();
-            const reply = res.choices[0].message.content.trim();
+          let reply = null;
+          if (typeof window.fwCallLLM === "function") {
+            try {
+              reply = await window.fwCallLLM(api, [{ role: "user", content: prompt }], { temperature: 0.8 });
+            } catch(e) { /* fall through to original fetch */ }
+          }
+          if (reply === null) {
+            const response = await fetch(`${api.url}/chat/completions`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+              body: JSON.stringify({
+                model: api.model,
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0.8
+              })
+            });
+            if (response.ok) {
+              const res = await response.json();
+              reply = res.choices[0].message.content.trim();
+            }
+          }
+          if (reply !== null) {
 
             const lines = reply.split("\n").map(l => l.trim()).filter(l => l.length > 0);
             let isLiked = false;
@@ -1187,19 +1203,26 @@ ${char.persona}
 今天路过旧书店，带走了一本泛黄的诗集。感觉时间在这里走得很慢。
 [MOMENT_IMAGE] 泛黄的纸张上印着模糊的字迹，旁边放着一杯温热的红茶`;
 
-    const response = await fetch(`${api.url}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-      body: JSON.stringify({
-        model: api.model,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.9
-      })
-    });
-
-    if (!response.ok) throw new Error("API 响应失败");
-    const result = await response.json();
-    let reply = result.choices[0].message.content.trim();
+    let reply = null;
+    if (typeof window.fwCallLLM === "function") {
+      try {
+        reply = await window.fwCallLLM(api, [{ role: "user", content: prompt }], { temperature: 0.9 });
+      } catch(e) { /* fall through to original fetch */ }
+    }
+    if (reply === null) {
+      const response = await fetch(`${api.url}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+        body: JSON.stringify({
+          model: api.model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.9
+        })
+      });
+      if (!response.ok) throw new Error("API 响应失败");
+      const result = await response.json();
+      reply = result.choices[0].message.content.trim();
+    }
 
     let imageDesc = "";
     const imgRegex = /[\[【]MOMENT_IMAGE[\]】]\s*([\s\S]*?)$/i;

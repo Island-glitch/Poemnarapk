@@ -17,11 +17,15 @@ let readerStartTime = null;
 // ==========================================
 //             0. 自愈型底层解析 Helper 函数
 // ==========================================
-function resolveAvatar(avatar) {
+function resolveAvatar(avatar, name) {
   if (!avatar) {
-    // 关键修复：SVG 内部属性必须用单引号，否则双引号会提前闭合 <img src="..."> 的 src 属性，
-    // 导致头像显示为破损图片，且剩余 SVG 标记（含 > 字符）泄漏到页面，造成名字带残破 > 字样
-    return "data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><circle cx='50' cy='50' r='50' fill='%23cbd5e1'/><text x='50' y='62' font-size='50' text-anchor='middle' fill='%2394a3b8' font-family='sans-serif'>人</text></svg>";
+    // 默认头像取角色名首字，而非统一的"人"字
+    const ch = String(name || '').charAt(0) || '?';
+    const colors = ['#3b82f6', '#0f766e', '#8b5cf6', '#e11d48', '#b45309', '#0891b2'];
+    const color = colors[name ? name.charCodeAt(0) % colors.length : 0];
+    return "data:image/svg+xml;utf8," + encodeURIComponent(
+      `<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><circle cx='50' cy='50' r='50' fill='${color}'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='#fff' font-family='sans-serif' font-weight='700'>${ch}</text></svg>`
+    );
   }
   if (avatar instanceof Blob) {
     return URL.createObjectURL(avatar);
@@ -30,7 +34,8 @@ function resolveAvatar(avatar) {
 }
 
 function escapeHtml(str) {
-  if (!str) return '';
+  if (str == null) return '';
+  if (typeof str !== 'string') str = String(str);
   return str.replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -147,19 +152,26 @@ async function renderBookshelf() {
   const books = await db.reader_books.where('collected').equals(1).toArray();
   books.forEach(b => {
     const item = document.createElement("div");
-    item.className = "bookshelf-item";
+    // isImported=3 标记为用户自写书，添加独立 class 做颜色区分
+    item.className = "bookshelf-item" + (b.isImported === 3 ? " user-created" : "");
     item.onclick = () => openBookDetails(b.id);
-    
-    const coverHtml = b.coverUrl 
+
+    const coverHtml = b.coverUrl
       ? `<img class="book-cover-img" src="${b.coverUrl}">`
       : `<div class="book-cover-title-fallback">${escapeHtml(b.title.slice(0, 8))}</div>`;
 
     // 限制书名最长显示 8 个字，防范撑大网格 [1]
     const displayTitle = b.title.length > 8 ? b.title.slice(0, 8) + "..." : b.title;
 
+    // 用户自写书添加右上角小标
+    const badgeHtml = b.isImported === 3
+      ? `<span class="book-cover-badge">原创</span>`
+      : '';
+
     item.innerHTML = `
       <div class="book-cover-wrapper">
         ${coverHtml}
+        ${badgeHtml}
       </div>
       <div class="book-meta-title">${escapeHtml(displayTitle)}</div>
     `;
@@ -510,7 +522,7 @@ async function triggerAddTagDialog() {
   const tags = await db.reader_tags.toArray();
   const overlay = document.createElement("div");
   overlay.className = "chat-details-overlay";
-  overlay.style.cssText = "display:flex; z-index:9999;";
+  overlay.style.cssText = "z-index:9999;";
   overlay.innerHTML = `
     <div class="chat-details-panel" style="max-width:380px; width:90%; max-height:80vh; overflow-y:auto; border-radius:16px;">
       <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border);">
@@ -538,10 +550,12 @@ async function triggerAddTagDialog() {
     </div>
   `;
   document.body.appendChild(overlay);
+  // 关键：加 active 类让 overlay 可见可交互
+  requestAnimationFrame(() => overlay.classList.add("active"));
 
   const closeBtn = overlay.querySelector("#tag-mgr-close");
-  closeBtn.onclick = () => { overlay.remove(); };
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  closeBtn.onclick = () => { overlay.classList.remove("active"); setTimeout(() => overlay.remove(), 300); };
+  overlay.onclick = (e) => { if (e.target === overlay) { overlay.classList.remove("active"); setTimeout(() => overlay.remove(), 300); } };
 
   // 删除标签
   overlay.querySelectorAll(".tag-del-btn").forEach(btn => {
@@ -550,9 +564,9 @@ async function triggerAddTagDialog() {
       const name = btn.getAttribute("data-name");
       showCustomConfirm("确认删除", `确定要删除标签「${name}」吗？`, async () => {
         await db.reader_tags.delete(id);
-        overlay.remove();
+        overlay.classList.remove("active");
+        setTimeout(() => { overlay.remove(); }, 300);
         await refreshCategories();
-        // 刷新标签管理弹窗
         triggerAddTagDialog();
       });
     };
@@ -564,14 +578,14 @@ async function triggerAddTagDialog() {
   const doAdd = async () => {
     const val = newInput.value.trim();
     if (!val) return;
-    // 去重校验
     const existing = await db.reader_tags.where('name').equals(val).first();
     if (existing) {
       showToast("该标签已存在！");
       return;
     }
     await db.reader_tags.add({ name: val });
-    overlay.remove();
+    overlay.classList.remove("active");
+    setTimeout(() => { overlay.remove(); }, 300);
     await refreshCategories();
     triggerAddTagDialog();
   };
@@ -614,7 +628,7 @@ async function openReaderSearch() {
       card.classList.add("selected");
     };
 
-    const avatarUrl = resolveAvatar(s.customCharAvatar || char.avatar);
+    const avatarUrl = resolveAvatar(s.customCharAvatar || char.avatar, s.customCharName || char.name);
     card.innerHTML = `
       <img class="reader-char-option-avatar" src="${avatarUrl}">
       <div class="reader-char-option-names">
@@ -722,9 +736,16 @@ function openBookDetailsFromData(title, author, summary) {
 async function openBookDetails(bookId) {
   const b = await db.reader_books.get(bookId);
   if (!b) return;
-  
+
+  // 用户自写书：直接进入作者工坊编辑，不走详情页
+  if (b.isImported === 3) {
+    closeBookDetails();
+    openAuthorStudioForBook(b.id);
+    return;
+  }
+
   detailsTempBook = b;
-  
+
   document.getElementById("detail-book-title").innerText = b.title;
   document.getElementById("detail-book-author").innerText = "作者：" + b.author;
   document.getElementById("detail-book-summary").innerText = b.summary;
@@ -813,6 +834,8 @@ async function startReadingRoom() {
 
   // 载入历史阅读偏好
   applyReadingPreferences();
+  refreshReaderFontSelect();
+  applyReadingFont();
 
   // 载入第一章
   await loadChapter(currentReadingChapterNum);
@@ -1108,7 +1131,7 @@ function openCompanionSelector() {
 
       html += `
         <div class="reader-char-option-card companion-opt-card ${isSelectedClass}" data-char-id="${s.charId}" onclick="readerSystem.selectCompanionToHighlight(this, ${s.charId})">
-          <img class="reader-char-option-avatar" src="${resolveAvatar(s.customCharAvatar || char.avatar)}">
+          <img class="reader-char-option-avatar" src="${resolveAvatar(s.customCharAvatar || char.avatar, s.customCharName || char.name)}">
           <div class="reader-char-option-names">
             <span class="reader-char-option-real">${escapeHtml(s.customCharName || char.name)}</span>
             <span class="reader-char-option-remark">${escapeHtml(char.remark || "无备注")}</span>
@@ -1221,12 +1244,12 @@ ${userPersona}
     // 缓存书评文本于 DOM 节点上
     anchor.setAttribute("data-comment-text", res.trim());
     anchor.setAttribute("data-char-name", char.name);
-    anchor.setAttribute("data-char-avatar", resolveAvatar(sess?.customCharAvatar || char.avatar));
+    anchor.setAttribute("data-char-avatar", resolveAvatar(sess?.customCharAvatar || char.avatar, sess?.customCharName || char.name));
 
   } catch(e) {
     anchor.setAttribute("data-comment-text", "伴读评阅超时。");
     anchor.setAttribute("data-char-name", char.name);
-    anchor.setAttribute("data-char-avatar", resolveAvatar(sess?.customCharAvatar || char.avatar));
+    anchor.setAttribute("data-char-avatar", resolveAvatar(sess?.customCharAvatar || char.avatar, sess?.customCharName || char.name));
   }
 }
 
@@ -1322,6 +1345,83 @@ function selectReadingTextCustomColor() {
   });
 }
 
+// 刷新阅读正文字体下拉选项（从全局字体索引中读取）
+function refreshReaderFontSelect() {
+  const select = document.getElementById("reader-font-select");
+  if (!select) return;
+  const prefs = JSON.parse(localStorage.getItem("reader_preferences") || "{}");
+  const activeFont = prefs.fontName || "";
+  let idx = {};
+  try { idx = (typeof loadFontIndex === "function") ? loadFontIndex() : JSON.parse(localStorage.getItem("custom-fonts-index") || "{}"); } catch (e) {}
+  select.innerHTML = '<option value="">系统默认</option>';
+  Object.keys(idx).forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    if (name === activeFont) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+// 选择阅读正文字体（仅作用于 #reading-content-container，不影响全局）
+function selectReadingFont(fontName) {
+  const prefs = JSON.parse(localStorage.getItem("reader_preferences") || "{}");
+  prefs.fontName = fontName || "";
+  localStorage.setItem("reader_preferences", JSON.stringify(prefs));
+  applyReadingFont();
+  showToast(fontName ? `阅读字体已切换为：${fontName}` : "阅读字体已恢复系统默认");
+}
+
+// 应用阅读正文字体（通过 FontFace API 加载后注入局部 CSS）
+async function applyReadingFont() {
+  const prefs = JSON.parse(localStorage.getItem("reader_preferences") || "{}");
+  const fontName = prefs.fontName || "";
+  const container = document.getElementById("reading-content-container");
+  if (!container) return;
+
+  // 移除旧的阅读字体注入
+  const oldStyle = document.getElementById("reader-custom-font-style");
+  if (oldStyle) oldStyle.remove();
+
+  if (!fontName) {
+    container.style.fontFamily = "";
+    return;
+  }
+
+  // 获取字体数据源
+  let src = null;
+  try { src = (typeof getFontSrc === "function") ? await getFontSrc(fontName) : null; } catch (e) {}
+  if (!src) {
+    console.warn("[Reader Font] 字体数据丢失:", fontName);
+    return;
+  }
+
+  const famName = "ReaderFont_" + fontName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, "");
+  const fallback = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+
+  try {
+    // 先移除同名的旧 FontFace
+    try {
+      for (const ff of document.fonts) {
+        if (ff.family === famName) { document.fonts.delete(ff); break; }
+      }
+    } catch (e) {}
+    const fontFace = new FontFace(famName, `url("${src}")`);
+    await fontFace.load();
+    document.fonts.add(fontFace);
+  } catch (e) {
+    console.warn("[Reader Font] FontFace API 加载失败，回退到 @font-face CSS:", e);
+  }
+
+  // 注入局部 CSS：仅作用于阅读正文容器及其子元素
+  const styleEl = document.createElement("style");
+  styleEl.id = "reader-custom-font-style";
+  styleEl.textContent = `
+    @font-face { font-family: "${famName}"; src: url("${src}"); }
+    #reading-content-container, #reading-content-container * { font-family: "${famName}", ${fallback} !important; }
+  `;
+  document.head.appendChild(styleEl);
+}
+
 function changeReadingFlipStyle(style) {
   const prefs = JSON.parse(localStorage.getItem("reader_preferences") || "{}");
   prefs.flipStyle = style;
@@ -1376,7 +1476,7 @@ async function renderReaderMine() {
   if (activeMeId) {
     const user = await db.archives.get(Number(activeMeId));
     if (user) {
-      if (meAvatar) meAvatar.src = resolveAvatar(user.avatar);
+      if (meAvatar) meAvatar.src = resolveAvatar(user.avatar, user.name);
       if (meName) meName.innerText = user.name;
       if (meRemark) meRemark.innerText = user.remark || "默认身份";
     }
@@ -1392,6 +1492,8 @@ async function renderReaderMine() {
 
   // 渲染预设列表
   await renderReaderPresetsList();
+  // 渲染我的创作列表
+  await renderAuthorWorksList();
 }
 
 function formatReadingTime(totalSec) {
@@ -1467,13 +1569,21 @@ async function deleteReaderPreset(id) {
 // ==========================================
 //             10. 通用底层桥接器
 // ==========================================
-async function getActiveApiPreset() {
+async function getActiveApiPreset(feature) {
+  // 按功能位解析（默认「阅读」）：专用优先，未设置则跟随链接里的全局预设
+  if (window.apiRoutes && typeof window.apiRoutes.resolve === "function") {
+    const p = await window.apiRoutes.resolve(feature || "reader");
+    if (p) return p;
+  }
   const presetId = localStorage.getItem("global_api_preset_id");
   if (!presetId) throw new Error("未配置全局 API 预设，请前往系统设置配置！");
   return await db.api_presets.get(Number(presetId));
 }
 
 async function fetchAIResponse(api, promptText) {
+  if (typeof window.fwCallLLM === "function") {
+    return await window.fwCallLLM(api, [{ role: "user", content: promptText }], { temperature: api.temperature });
+  }
   const response = await fetch(`${api.url}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
@@ -1517,6 +1627,601 @@ function parseAIJsonList(text) {
   return books.slice(0, 3);
 }
 
+// ============================================================
+// 12. 作者工坊：用户自写书（isImported=3 标记）
+// ============================================================
+let authorStudioCurrentBookId = null;
+let authorStudioCurrentChapterNum = null;
+let writingCharId = null; // 写作协助角色
+
+// 渲染我的创作列表（在"我的"页面，用户自写书快捷入口）
+async function renderAuthorWorksList() {
+  const container = document.getElementById("reader-author-works-container");
+  if (!container) return;
+  container.innerHTML = "";
+  const works = await db.reader_books.where('isImported').equals(3).toArray();
+  if (works.length === 0) {
+    container.innerHTML = `<div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:12px;">点击右上角"新建书"开始创作，作品完成后会自动出现在书架中</div>`;
+    return;
+  }
+  for (const w of works) {
+    const chapterCount = await db.reader_chapters.where('bookId').equals(w.id).count();
+    const row = document.createElement("div");
+    row.className = "menu-item";
+    row.style.justifyContent = "space-between";
+    row.innerHTML = `
+      <div style="flex:1; min-width:0;">
+        <span style="font-size:13px; font-weight:700; color:#0f766e; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(w.title)}</span>
+        <span style="font-size:11px; color:var(--text-secondary);">${chapterCount} 章 · 点击进入编辑</span>
+      </div>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#94a3b8" stroke-width="2" style="flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>
+    `;
+    row.onclick = () => openAuthorStudioForBook(w.id);
+    container.appendChild(row);
+  }
+}
+
+// 全屏新建书页面
+function openNewBookFullscreen() {
+  const overlay = document.getElementById("reader-author-studio-overlay");
+  document.getElementById("author-studio-title").innerText = "新建书";
+  document.getElementById("author-studio-pen-btn").style.display = "none";
+  authorStudioCurrentBookId = null;
+  authorStudioCurrentChapterNum = null;
+  authorStudioCurrentChapterId = null;
+
+  const body = document.getElementById("author-studio-body");
+  body.innerHTML = `
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; padding:20px;">
+      <div style="width:80px; height:80px; border-radius:16px; background:linear-gradient(135deg, #0f766e, #134e4a); display:flex; align-items:center; justify-content:center; margin-bottom:24px; box-shadow:0 8px 24px rgba(15,118,110,0.3);">
+        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 4z"/></svg>
+      </div>
+      <div style="font-size:18px; font-weight:700; color:var(--text-primary); margin-bottom:8px;">为你的新书命名</div>
+      <div style="font-size:12px; color:var(--text-secondary); margin-bottom:32px; text-align:center;">取一个响亮的名字，开启你的创作之旅</div>
+      <input id="new-book-title-input" type="text" placeholder="输入书名..." maxlength="30" style="width:100%; max-width:300px; padding:14px 16px; border:2px solid var(--border); border-radius:12px; font-size:16px; text-align:center; background:var(--bg-primary); color:var(--text-primary); box-sizing:border-box; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#0f766e'" onblur="this.style.borderColor='var(--border)'" />
+      <button id="new-book-confirm-btn" style="margin-top:24px; width:100%; max-width:300px; padding:14px; background:#0f766e; color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; transition: opacity 0.2s;">创建并开始写作</button>
+    </div>
+  `;
+  // 显示全屏浮层
+  overlay.style.display = "flex";
+  requestAnimationFrame(() => { overlay.style.opacity = "1"; });
+  const input = document.getElementById("new-book-title-input");
+  input.focus();
+  const doCreate = async () => {
+    const title = input.value.trim();
+    if (!title) { showToast("请输入书名"); input.focus(); return; }
+    const meId = localStorage.getItem("active_me_id");
+    let authorName = "我";
+    if (meId) {
+      const u = await db.archives.get(Number(meId));
+      if (u) authorName = u.name;
+    }
+    const newId = await db.reader_books.add({
+      title: title,
+      author: authorName,
+      summary: "",
+      coverUrl: "",
+      isImported: 3,
+      fileType: "",
+      currentChapterId: 0,
+      collected: 1
+    });
+    await renderAuthorWorksList();
+    await renderBookshelf();
+    openAuthorStudioForBook(newId);
+  };
+  document.getElementById("new-book-confirm-btn").onclick = doCreate;
+  input.onkeydown = (e) => { if (e.key === "Enter") doCreate(); };
+}
+
+// 打开某本书的写作视图（全屏）
+async function openAuthorStudioForBook(bookId) {
+  authorStudioCurrentBookId = bookId;
+  authorStudioCurrentChapterNum = null;
+  authorStudioCurrentChapterId = null;
+  const book = await db.reader_books.get(bookId);
+  if (!book) return;
+  document.getElementById("author-studio-title").innerText = book.title;
+  document.getElementById("author-studio-pen-btn").style.display = "none";
+  await renderAuthorChapterList(bookId);
+  const overlay = document.getElementById("reader-author-studio-overlay");
+  overlay.style.display = "flex";
+  requestAnimationFrame(() => { overlay.style.opacity = "1"; });
+}
+
+function exitAuthorStudio() {
+  const overlay = document.getElementById("reader-author-studio-overlay");
+  overlay.style.opacity = "0";
+  setTimeout(() => { overlay.style.display = "none"; }, 300);
+  authorStudioCurrentBookId = null;
+  authorStudioCurrentChapterNum = null;
+  authorStudioCurrentChapterId = null;
+  renderAuthorWorksList();
+}
+
+// 兼容旧调用
+function openAuthorStudio() {
+  openNewBookFullscreen();
+}
+
+// 章节列表视图（在工坊 body 中渲染）
+async function renderAuthorChapterList(bookId) {
+  const book = await db.reader_books.get(bookId);
+  if (!book) return;
+  document.getElementById("author-studio-title").innerText = book.title;
+  document.getElementById("author-studio-pen-btn").style.display = "none";
+  const body = document.getElementById("author-studio-body");
+  const chapters = await db.reader_chapters.where('bookId').equals(bookId).toArray();
+  chapters.sort((a, b) => a.chapterNum - b.chapterNum);
+  body.innerHTML = `
+    ${book.summary ? `<div style="background:#f0fdfa; border:1px solid #ccfbf1; border-radius:10px; padding:12px; margin-bottom:14px;"><div style="font-size:11px; color:#0f766e; font-weight:600; margin-bottom:4px;">简介</div><div style="font-size:12px; color:#475569; line-height:1.6;">${escapeHtml(book.summary)}</div></div>` : ''}
+    <div style="margin-bottom:12px; display:flex; gap:8px;">
+      <button id="author-add-chapter-btn" style="flex:1; padding:12px; background:#0f766e; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer;">+ 新建章节</button>
+      <button id="author-edit-book-info-btn" style="padding:12px 16px; background:#fff; color:#475569; border:1px solid #cbd5e1; border-radius:10px; font-size:13px; cursor:pointer;">简介</button>
+    </div>
+    <div id="author-chapter-list"></div>
+  `;
+  document.getElementById("author-add-chapter-btn").onclick = () => promptCreateChapter(bookId);
+  document.getElementById("author-edit-book-info-btn").onclick = () => promptEditBookInfo(book);
+
+  const listEl = document.getElementById("author-chapter-list");
+  if (chapters.length === 0) {
+    listEl.innerHTML = `<div style="text-align:center; color:var(--text-secondary); font-size:13px; padding:40px 0;">还没有章节，点击上方按钮创建第一章</div>`;
+    return;
+  }
+  listEl.innerHTML = "";
+  chapters.forEach(ch => {
+    const row = document.createElement("div");
+    row.style.cssText = "background:var(--bg-secondary); border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:8px; cursor:pointer; transition: all 0.2s;";
+    row.innerHTML = `
+      <div style="font-size:14px; font-weight:600; color:var(--text-primary);">${escapeHtml(ch.title || '第' + ch.chapterNum + '章')}</div>
+      <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">${(ch.content || '').length} 字</div>
+    `;
+    row.onclick = () => openAuthorChapterEditor(ch.id);
+    listEl.appendChild(row);
+  });
+}
+
+function promptCreateChapter(bookId) {
+  showCustomPrompt("请输入章节标题", "第1章", async (title) => {
+    if (!title.trim()) return;
+    const chapters = await db.reader_chapters.where('bookId').equals(bookId).toArray();
+    const maxNum = chapters.reduce((m, c) => Math.max(m, c.chapterNum), 0);
+    const newNum = maxNum + 1;
+    const newId = await db.reader_chapters.add({
+      bookId: bookId,
+      chapterNum: newNum,
+      title: title.trim(),
+      content: "",
+      summary: ""
+    });
+    await renderAuthorChapterList(bookId);
+    openAuthorChapterEditor(newId);
+  });
+}
+
+function promptEditBookInfo(book) {
+  showCustomPrompt("请输入书籍简介", book.summary || "", async (summary) => {
+    await db.reader_books.update(book.id, { summary: summary.trim() });
+    showToast("简介已更新");
+    await renderAuthorChapterList(book.id);
+  });
+}
+
+// 章节编辑器（原生写作页面）
+// mode: 'edit' 编辑模式 / 'preview' 预览模式（双击段落触发段评）
+let authorStudioCurrentChapterId = null;
+async function openAuthorChapterEditor(chapterId, mode = 'edit') {
+  const chap = await db.reader_chapters.get(chapterId);
+  if (!chap) return;
+  authorStudioCurrentChapterId = chapterId;
+  authorStudioCurrentChapterNum = chap.chapterNum;
+  const book = await db.reader_books.get(chap.bookId);
+  document.getElementById("author-studio-title").innerText = (book?.title || "") + " · " + (chap.title || "");
+  document.getElementById("author-studio-pen-btn").style.display = "block";
+  const body = document.getElementById("author-studio-body");
+  // 检查是否有选中的写作角色
+  const penBtn = document.getElementById("author-studio-pen-btn");
+  if (writingCharId) {
+    penBtn.style.color = "#0f766e";
+  } else {
+    penBtn.style.color = "#64748b";
+  }
+
+  if (mode === 'preview') {
+    await renderChapterPreview(chap, book);
+  } else {
+    await renderChapterEditor(chap, book);
+  }
+}
+
+// 编辑模式
+async function renderChapterEditor(chap, book) {
+  const body = document.getElementById("author-studio-body");
+  body.innerHTML = `
+    <div style="margin-bottom:10px;">
+      <input id="author-chapter-title-input" type="text" value="${escapeHtml(chap.title || '')}" placeholder="章节标题" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:14px; box-sizing:border-box;" />
+    </div>
+    <textarea id="author-chapter-content-textarea" placeholder="在此开始创作..." style="width:100%; min-height:50vh; padding:14px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px; line-height:1.8; box-sizing:border-box; resize:vertical; font-family: inherit;">${escapeHtml(chap.content || '')}</textarea>
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button id="author-save-chapter-btn" style="flex:1; padding:12px; background:#0f766e; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;">保存</button>
+      <button id="author-char-help-btn" style="padding:12px 16px; background:#fff; color:#0f766e; border:1px solid #0f766e; border-radius:8px; font-size:13px; cursor:pointer;">${writingCharId ? '角色续写' : '选角色续写'}</button>
+    </div>
+    ${chap.content && chap.content.trim() ? `
+      <div style="margin-top:10px; text-align:center;">
+        <button id="author-switch-preview-btn" style="background:none; border:none; color:#0f766e; font-size:12px; cursor:pointer; text-decoration:underline;">查看预览（双击段落触发段评）</button>
+      </div>
+    ` : `
+      <p style="font-size:11px; color:#94a3b8; text-align:center; margin-top:10px;">提示：保存后切换预览，双击段落可触发路人段评</p>
+    `}
+  `;
+  document.getElementById("author-save-chapter-btn").onclick = async () => {
+    const title = document.getElementById("author-chapter-title-input").value.trim();
+    const content = document.getElementById("author-chapter-content-textarea").value;
+    await db.reader_chapters.update(chap.id, { title: title || '第' + chap.chapterNum + '章', content: content });
+    showToast("章节已保存");
+    await renderAuthorWorksList();
+    await renderBookshelf();
+    // 保存后切换到预览模式
+    await openAuthorChapterEditor(chap.id, 'preview');
+  };
+  document.getElementById("author-char-help-btn").onclick = () => openWritingCharSelector();
+  const previewBtn = document.getElementById("author-switch-preview-btn");
+  if (previewBtn) {
+    previewBtn.onclick = () => openAuthorChapterEditor(chap.id, 'preview');
+  }
+}
+
+// 预览模式（可双击段落触发段评）
+async function renderChapterPreview(chap, book) {
+  const body = document.getElementById("author-studio-body");
+  const paragraphs = (chap.content || '').split(/\n+/).filter(p => p.trim());
+
+  // 渲染段落
+  let paragraphsHtml = '';
+  paragraphs.forEach((p, idx) => {
+    paragraphsHtml += `<p class="author-preview-para" data-para-idx="${idx}" style="margin:0 0 14px 0; padding:8px 10px; border-radius:6px; font-size:15px; line-height:1.85; color:#1e293b; cursor:pointer; transition: background 0.15s;" title="双击触发路人段评">${escapeHtml(p)}</p>`;
+  });
+
+  body.innerHTML = `
+    <div style="margin-bottom:14px; padding:12px; background:#f0fdfa; border-radius:8px; border:1px solid #ccfbf1;">
+      <div style="font-size:14px; font-weight:700; color:#0f766e; margin-bottom:4px;">${escapeHtml(chap.title || '第' + chap.chapterNum + '章')}</div>
+      <div style="font-size:11px; color:#94a3b8;">共 ${paragraphs.length} 段 · 双击段落触发路人段评</div>
+    </div>
+    <div id="author-preview-content">${paragraphsHtml || '<p style="text-align:center; color:#94a3b8; font-size:13px;">本章节暂无内容</p>'}</div>
+    <div style="margin-top:16px; display:flex; gap:8px;">
+      <button id="author-edit-back-btn" style="flex:1; padding:12px; background:#0f766e; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;">返回编辑</button>
+      <button id="author-clear-comments-btn" style="padding:12px 16px; background:#fff; color:#94a3b8; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; cursor:pointer;">清空段评</button>
+    </div>
+    <div id="author-paragraph-comments-container" style="margin-top:16px;"></div>
+  `;
+
+  // 双击段落触发段评
+  document.querySelectorAll(".author-preview-para").forEach(el => {
+    el.ondblclick = () => triggerParagraphReview(chap.id, Number(el.getAttribute("data-para-idx")), el);
+    el.onmouseenter = () => { el.style.background = "#f0fdfa"; };
+    el.onmouseleave = () => { el.style.background = "transparent"; };
+  });
+
+  document.getElementById("author-edit-back-btn").onclick = () => openAuthorChapterEditor(chap.id, 'edit');
+  document.getElementById("author-clear-comments-btn").onclick = async () => {
+    if (!confirm("确定清空本章所有段评？")) return;
+    await db.reader_user_paragraph_comments.where('chapterId').equals(chap.id).delete();
+    await renderParagraphComments(chap.id);
+    showToast("段评已清空");
+  };
+
+  await renderParagraphComments(chap.id);
+}
+
+// 渲染已生成的段评
+async function renderParagraphComments(chapterId) {
+  const container = document.getElementById("author-paragraph-comments-container");
+  if (!container) return;
+  const comments = await db.reader_user_paragraph_comments.where('chapterId').equals(chapterId).toArray();
+  if (comments.length === 0) {
+    container.innerHTML = `<p style="font-size:11px; color:#94a3b8; text-align:center; padding:8px 0;">暂无段评，双击段落即可生成</p>`;
+    return;
+  }
+  let html = `<div style="font-size:12px; font-weight:700; color:#475569; margin-bottom:8px;">路人段评（${comments.length}）</div>`;
+  comments.forEach(c => {
+    html += `
+      <div style="background:#fffbeb; border-left:3px solid #f59e0b; padding:8px 10px; margin-bottom:6px; border-radius:0 6px 6px 0;">
+        <div style="font-size:11px; color:#92400e; margin-bottom:4px;">第${c.paraIdx + 1}段 · ${escapeHtml(c.charName || '路人')}</div>
+        <div style="font-size:13px; color:#1e293b; line-height:1.6;">${escapeHtml(c.content)}</div>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+// 触发段评（一次性生成15-20句，基于当前进度）
+async function triggerParagraphReview(chapterId, paraIdx, paraEl) {
+  const chap = await db.reader_chapters.get(chapterId);
+  if (!chap) return;
+  const book = await db.reader_books.get(chap.bookId);
+  const paragraphs = (chap.content || '').split(/\n+/).filter(p => p.trim());
+  const targetPara = paragraphs[paraIdx] || '';
+  if (!targetPara) return;
+
+  // 已生成过的段评，先删除该段旧的
+  const oldOnes = await db.reader_user_paragraph_comments.where('chapterId').equals(chapterId).toArray();
+  const oldThisPara = oldOnes.filter(c => c.paraIdx === paraIdx);
+  if (oldThisPara.length > 0) {
+    if (!confirm("该段落已有段评，是否重新生成？")) return;
+    for (const c of oldThisPara) {
+      await db.reader_user_paragraph_comments.delete(c.id);
+    }
+  }
+
+  // 视觉反馈：段落高亮
+  if (paraEl) {
+    paraEl.style.background = "#fef3c7";
+    paraEl.style.transition = "background 0.3s";
+  }
+  showToast("路人正在围观这一段...");
+
+  const api = await getActiveApiPreset();
+  if (!api) { showToast("未配置全局 API 预设"); return; }
+
+  // 当前阅读进度上下文（前文 + 当前段）
+  const prevParas = paragraphs.slice(0, paraIdx).join('\n').slice(-600);
+  const prompt = `你是一群在阅读网文的路人读者，正在看一本名为《${book?.title || ''}》的小说。
+书籍简介：${book?.summary || '（暂无）'}
+当前章节：${chap.title || '第' + chap.chapterNum + '章'}
+
+【前文摘要】
+${prevParas || '（章节开头）'}
+
+【当前正在围观的段落】
+${targetPara}
+
+请以多个不同路人的口吻，对这一段落发表评论，要求：
+1. 一次性生成 15 到 20 条评论，每条 1-3 句话。
+2. 每条评论前用「@昵称：」开头，昵称要各异、符合网文读者风格（如"键盘侠王大爷"、"追更十年的老粉"、"路人甲A"等）。
+3. 评论内容基于当前进度，可以吐槽、夸赞、猜测后续、玩梗、争论，但不要剧透未发生情节。
+4. 每条评论独立成行，不要编号，不要解释。
+5. 直接输出评论，不要任何前后缀。
+
+示例格式：
+@键盘侠王大爷：这段写得不错，但我觉得主角有点太圣母了。
+@追更十年的老粉：呜呜呜终于等到这一刻，作者大大加油！`;
+
+  try {
+    const result = await fetchAIResponse(api, prompt);
+    const lines = result.split(/\n+/).map(s => s.trim()).filter(s => s && s.startsWith('@'));
+    const finalLines = lines.slice(0, 20);
+    if (finalLines.length < 15) {
+      // 兜底：AI没生成够，原样存已有的
+      console.warn("段评数量不足15条，实际生成:", finalLines.length);
+    }
+    for (const line of finalLines) {
+      const m = line.match(/^@([^：:]+)[：:]\s*(.+)$/);
+      const nickname = m ? m[1].trim() : '路人';
+      const content = m ? m[2].trim() : line;
+      await db.reader_user_paragraph_comments.add({
+        bookId: chap.bookId,
+        chapterId: chapterId,
+        paraIdx: paraIdx,
+        charName: nickname,
+        content: content,
+        createdAt: Date.now()
+      });
+    }
+    showToast(`生成了 ${finalLines.length} 条段评`);
+    await renderParagraphComments(chapterId);
+  } catch (e) {
+    console.error("段评生成失败:", e);
+    showToast("段评生成失败: " + e.message);
+  } finally {
+    if (paraEl) {
+      setTimeout(() => { paraEl.style.background = "transparent"; }, 600);
+    }
+  }
+}
+
+// 写作角色选择器（复用伴读选择器样式）
+async function openWritingCharSelector() {
+  // 移除已有弹窗
+  const existing = document.getElementById("writing-char-selector-overlay");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "writing-char-selector-overlay";
+  overlay.className = "modal-overlay";
+  // 关键：用 fixed 定位脱离阅读窗口层级，确保覆盖全屏在阅读页之上
+  overlay.style.cssText = "position: fixed; z-index: 100000; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; align-items: flex-end; justify-content: center; display: flex;";
+  let html = `<div class="modal" style="max-width: 340px; padding: 16px;">
+    <header class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h4 style="font-weight:700; font-size:14px;">选择协助写作的角色</h4>
+      <button onclick="var o=document.getElementById('writing-char-selector-overlay'); o.classList.remove('active'); o.style.opacity='0'; o.style.pointerEvents='none'; setTimeout(()=>{o.remove();},250)" style="background:none; border:none; cursor:pointer; color:#94a3b8; font-size:18px;">×</button>
+    </header>
+    <div class="reader-character-select-grid" style="max-height: 280px;" id="writing-char-grid"></div>
+    <button id="writing-char-confirm-btn" style="width:100%; margin-top:12px; padding:10px; background:#0f766e; color:#fff; border:none; border-radius:8px; font-size:13px; cursor:pointer;">确认选择</button>
+  </div>`;
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+  // 关键：加 active 类让 overlay 可见可交互
+  requestAnimationFrame(() => {
+    overlay.classList.add("active");
+    overlay.style.opacity = "1";
+    overlay.style.pointerEvents = "auto";
+  });
+
+  const grid = document.getElementById("writing-char-grid");
+  const sessions = await db.sessions.toArray();
+  let tempCharId = writingCharId;
+  for (const s of sessions) {
+    const char = await db.archives.get(s.charId);
+    if (!char) continue;
+    const isSelected = (writingCharId === s.charId) ? "selected" : "";
+    const card = document.createElement("div");
+    card.className = "reader-char-option-card " + isSelected;
+    card.setAttribute("data-char-id", s.charId);
+    card.innerHTML = `
+      <img class="reader-char-option-avatar" src="${resolveAvatar(s.customCharAvatar || char.avatar, s.customCharName || char.name)}">
+      <div class="reader-char-option-names">
+        <span class="reader-char-option-real">${escapeHtml(s.customCharName || char.name)}</span>
+        <span class="reader-char-option-remark">${escapeHtml(char.remark || "无备注")}</span>
+      </div>
+    `;
+    card.onclick = () => {
+      document.querySelectorAll("#writing-char-grid .reader-char-option-card").forEach(c => c.classList.remove("selected"));
+      card.classList.add("selected");
+      tempCharId = s.charId;
+    };
+    grid.appendChild(card);
+  }
+  document.getElementById("writing-char-confirm-btn").onclick = () => {
+    writingCharId = tempCharId;
+    overlay.classList.remove("active");
+    overlay.style.opacity = "0";
+    overlay.style.pointerEvents = "none";
+    setTimeout(() => overlay.remove(), 250);
+    const penBtn = document.getElementById("author-studio-pen-btn");
+    if (penBtn) penBtn.style.color = writingCharId ? "#0f766e" : "#64748b";
+    const helpBtn = document.getElementById("author-char-help-btn");
+    if (helpBtn) helpBtn.innerText = writingCharId ? "角色续写" : "选角色续写";
+    if (writingCharId) {
+      showToast("已选择协助角色，点击笔按钮或「角色续写」让角色帮忙补齐");
+    }
+  };
+}
+
+// 角色协助续写（1000-1500字，不截断）
+async function triggerCharWritingHelp() {
+  if (!writingCharId) {
+    openWritingCharSelector();
+    return;
+  }
+  if (!authorStudioCurrentChapterId) {
+    showToast("请先打开一个章节");
+    return;
+  }
+  const textarea = document.getElementById("author-chapter-content-textarea");
+  if (!textarea) {
+    // 当前可能在预览模式，先切回编辑模式
+    await openAuthorChapterEditor(authorStudioCurrentChapterId, 'edit');
+    showToast("已切回编辑模式，再次点击笔按钮触发续写");
+    return;
+  }
+  const currentContent = textarea.value;
+  const chap = await db.reader_chapters.get(authorStudioCurrentChapterId);
+  if (!chap) return;
+  const book = await db.reader_books.get(chap.bookId);
+  const char = await db.archives.get(writingCharId);
+  if (!char) { showToast("角色不存在"); return; }
+
+  // [3] 查找该 char 关联的会话，提取总结/记忆/上下文/人设特性
+  let sessionContext = "";
+  let userName = "作者";
+  let charName = char.name;
+  try {
+    const sess = await db.sessions.where('charId').equals(writingCharId).first();
+    if (sess) {
+      charName = sess.customCharName || char.name;
+      const user = await db.archives.get(sess.userId);
+      userName = sess.customUserName || user?.name || "作者";
+
+      // 提取核心记忆
+      let coreMemoryText = "";
+      if (sess.coreSelfStatus) coreMemoryText += `- 我的现状：${sess.coreSelfStatus}\n`;
+      if (sess.coreSelfPurpose) coreMemoryText += `- 我的目的：${sess.coreSelfPurpose}\n`;
+      if (sess.coreSelfChanges) coreMemoryText += `- 我的转变：${sess.coreSelfChanges}\n`;
+      if (sess.coreRelationship) coreMemoryText += `- 我和${userName}的关系：${sess.coreRelationship}\n`;
+      if (sess.coreUserInEyes) coreMemoryText += `- 我眼中的${userName}：${sess.coreUserInEyes}\n`;
+
+      // 提取最近的总结记忆（取最近5条）
+      let summariesText = "";
+      try {
+        const allSummaries = await db.summaries.where('sessionId').equals(sess.id).sortBy('startRound');
+        const recentSummaries = allSummaries.slice(-5);
+        if (recentSummaries.length > 0) {
+          summariesText = recentSummaries.map(s => `- ${s.content}`).join("\n");
+        }
+      } catch(e) {}
+
+      // 提取最近对话上下文（取最近6条消息）
+      let recentDialogueText = "";
+      try {
+        const recentMsgs = await db.messages.where('sessionId').equals(sess.id).sortBy('timestamp');
+        const recentSlice = recentMsgs.slice(-6);
+        if (recentSlice.length > 0) {
+          recentDialogueText = recentSlice.map(m => {
+            const speaker = m.senderType === 'user' ? userName : (m.senderType === 'char' ? charName : '系统');
+            return `${speaker}: ${m.content.substring(0, 100)}`;
+          }).join("\n");
+        }
+      } catch(e) {}
+
+      if (coreMemoryText || summariesText || recentDialogueText) {
+        sessionContext = `\n【你和${userName}的真实交往记忆（请将这些情感与经历自然融入你的写作风格与情节构思中）】`;
+        if (coreMemoryText) sessionContext += `\n## 核心心智记忆\n${coreMemoryText}`;
+        if (summariesText) sessionContext += `\n## 历史事件印象\n${summariesText}`;
+        if (recentDialogueText) sessionContext += `\n## 最近对话上下文\n${recentDialogueText}`;
+      }
+    }
+  } catch(e) {
+    console.warn("提取角色会话记忆失败:", e);
+  }
+
+  showToast("角色正在构思续写...");
+  const api = await getActiveApiPreset();
+  if (!api) { showToast("未配置全局 API 预设"); return; }
+
+  // [3] 增强 prompt：带总结/记忆/上下文/人设特性/个人思考
+  const prompt = `你是角色「${charName}」。你的人设如下：
+${char.persona || char.remark || ''}
+${sessionContext}
+
+现在，${userName} 写了一本小说，写到一半想叫你来续写。在你的视角里，${userName} 是你认识的人，TA 正在创作这个故事，现在卡住了，邀请你来接力。
+【书名】${book?.title || ''}
+【书籍简介】${book?.summary || ''}
+【当前章节】${chap.title || '第' + chap.chapterNum + '章'}
+【已有正文（续写起点）】
+${currentContent.slice(-800)}
+
+请基于以上内容，用你自己的风格和视角继续往下写 1000-1500 字。要求：
+1. 紧承已有正文的情节和氛围，不要重复已有内容。
+2. 保持文风一致，情节有推进。
+3. 融入你的人设特性与个性——你有自己的写作偏好和思考方式，写出来的文字要带着你的个人印记。
+4. 可以将你和${userName}真实交往中的情感、经历、记忆隐喻性地融入情节中（但不要直接照搬现实对话）。
+5. 续写正文结束后，另起一行用 --- 分隔，然后写一段 100-200 字的「你的思考与感想」：
+   - 你对${userName}写的这段内容的看法
+   - 你续写时的心路历程和构思思路
+   - 你对这个故事走向的个人见解
+6. 续写正文部分直接输出，不要任何解释、标注或前缀。
+7. 不要用代码块包裹。
+
+格式示例：
+（这里是1000-1500字的续写正文）
+---
+【${charName}的思考与感想】
+（这里是你个人的思考，100-200字）`;
+
+  try {
+    const result = await fetchAIResponse(api, prompt);
+    // 追加到文本框（中间加换行），不截断 AI 返回
+    const separator = currentContent.endsWith('\n') ? '\n' : '\n\n';
+    textarea.value = currentContent + separator + result;
+    // 滚动到新内容
+    textarea.scrollTop = textarea.scrollHeight;
+    showToast("续写完成，请审阅后保存");
+  } catch (e) {
+    console.error("角色续写失败:", e);
+    showToast("续写失败: " + e.message);
+  }
+}
+
+// 笔按钮点击：未选角色→选角色；已选角色→触发续写
+function penBtnClick() {
+  if (writingCharId) {
+    triggerCharWritingHelp();
+  } else {
+    openWritingCharSelector();
+  }
+}
+
 // 暴露出接口至全局
 window.readerSystem = {
   init: initReaderApp,
@@ -1531,6 +2236,8 @@ window.readerSystem = {
   toggleReadingMenuBar,
   selectReadingThemeColor,
   selectReadingTextCustomColor,
+  selectReadingFont,
+  refreshReaderFontSelect,
   changeReadingFlipStyle,
   openReadingDirectory,
   closeReadingDirectory,
@@ -1539,5 +2246,12 @@ window.readerSystem = {
   triggerAddTagDialog,
   refreshTrendingBoard,
   selectCompanionToHighlight,
-  saveCompanionSelection
+  saveCompanionSelection,
+  openAuthorStudio,
+  openNewBookFullscreen,
+  openAuthorStudioForBook,
+  exitAuthorStudio,
+  openWritingCharSelector,
+  penBtnClick,
+  triggerCharWritingHelp
 };

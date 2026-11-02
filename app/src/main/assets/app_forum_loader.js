@@ -1148,10 +1148,19 @@ ${syncIdentityContext}
 }
 
 async function forumCallAI(systemPrompt, userPrompt) {
-  const presetId = localStorage.getItem("global_api_preset_id");
-  if (!presetId) throw new Error("未配置全局默认 API，请前往‘系统设置 - API 协议设置’中配置并应用！");
-  const api = await db.api_presets.get(Number(presetId));
-  if (!api) throw new Error("API 配置预设未找到");
+  const api = (window.apiRoutes && typeof window.apiRoutes.resolve === "function")
+    ? await window.apiRoutes.resolve("forum")
+    : await db.api_presets.get(Number(localStorage.getItem("global_api_preset_id")));
+  if (!api) throw new Error("未配置全局默认 API，请前往‘系统设置 - API 协议设置’中配置并应用！");
+
+  if (typeof window.fwCallLLM === "function") {
+    try {
+      return await window.fwCallLLM(api, [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ], { temperature: api.temperature });
+    } catch (e) { /* fall through to original */ }
+  }
 
   const response = await fetch(`${api.url}/chat/completions`, {
     method: "POST",
@@ -1602,7 +1611,7 @@ async function forumInitNpcsPage() {
   if (!archiveList || !followsList) return;
 
   // 1. 数据高阶预拉取，杜绝清空 DOM 后的异步等待
-  const chars = await db.archives.where('type').equals('character').toArray();
+  const chars = (await db.archives.where('type').equals('character').toArray()).filter(c => !c.isSnapshot);
   const allNpcs = (await db.forum_npc_accounts.toArray()).filter(n => Number(n.userId) === Number(forumActiveAccountId));
   const allFollows = await db.forum_follows.where('followerId').equals(Number(forumActiveAccountId)).toArray();
 

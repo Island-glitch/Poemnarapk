@@ -483,27 +483,35 @@ ${promptText}
 【再次强调】：本次回复【只能】是 HTML 源码本身（从 <html> 或最外层 <div> 开始），【严禁】出现任何解释性文字、"好的我来生成"之类对话、"以下是代码"等前缀后缀。`
         });
 
-        const response = await fetch(`${api.url}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-          body: JSON.stringify({
-            model: api.model,
-            messages: messagesToSend,
-            temperature: api.temperature
-          })
-        });
-
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`HTTP ${response.status} 错误: ${errText}`);
+        let rawReply;
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            rawReply = await window.fwCallLLM(api, messagesToSend, { temperature: api.temperature });
+          } catch(e) { /* fall through to original fetch */ }
         }
+        if (rawReply === undefined) {
+          const response = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({
+              model: api.model,
+              messages: messagesToSend,
+              temperature: api.temperature
+            })
+          });
 
-        const result = await response.json();
-        if (!result.choices || result.choices.length === 0) {
-          throw new Error("模型服务返回数据异常，Choice 节点为空。");
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`HTTP ${response.status} 错误: ${errText}`);
+          }
+
+          const result = await response.json();
+          if (!result.choices || result.choices.length === 0) {
+            throw new Error("模型服务返回数据异常，Choice 节点为空。");
+          }
+
+          rawReply = result.choices[0].message.content.trim();
         }
-
-        const rawReply = result.choices[0].message.content.trim();
 
         // 5. 保存到数据库中 (入库内容绝对保留 AI 返回的一手原始未清洗状态)
         await db.html_cards.add({

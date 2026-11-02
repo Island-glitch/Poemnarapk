@@ -8,7 +8,11 @@
 }
 
 .app-window {
-  position: absolute;
+  /* position 必须是 absolute：所有应用窗口都靠它脱离文档流、贴在容器顶部。
+     一旦被内联样式改成 relative，窗口会变成流内块级元素、被前面的窗口顶下去一屏，
+     而 #phone-container 是 overflow:hidden —— 表现就是「点了没反应」（active 加了但整窗在可视区外）。
+     加 !important 是为了让「谁在窗口上写内联 position」都不会再造成这个坑。 */
+  position: absolute !important;
   top: 0; left: 0;
   width: 100%; height: 100%;
   background-color: var(--bg-main);
@@ -111,6 +115,179 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
 .btn-outline { background-color: transparent; border: 1.5px solid var(--primary); color: var(--primary); }
 .btn-danger-outline { background-color: transparent; border: 1.5px solid var(--danger); color: var(--danger); }
 
+  .local-deploy-intro-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 14px;
+  }
+  .local-deploy-intro-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .local-deploy-intro-desc {
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+  .resource-download-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .resource-download-summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    cursor: pointer;
+  }
+  .resource-download-summary::-webkit-details-marker {
+    display: none;
+  }
+  .resource-download-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .resource-download-subtitle {
+    font-size: 10px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+  .resource-download-badge {
+    flex-shrink: 0;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: #fee2e2;
+    color: #b91c1c;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .resource-download-body {
+    padding: 0 14px 14px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .resource-download-meta {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .resource-download-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .resource-download-row b {
+    color: var(--text-primary);
+    font-size: 11px;
+  }
+  .resource-download-note {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+  .resource-download-script-box {
+    margin-top: 12px;
+    border-radius: 12px;
+    background: #0f172a;
+    color: #e2e8f0;
+    overflow: hidden;
+  }
+  .resource-download-script-title {
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  #resource-nodejs-script-preview {
+    margin: 0;
+    padding: 12px;
+    font-size: 10px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "SFMono-Regular", Consolas, monospace;
+  }
+  .resource-download-status {
+    margin-top: 12px;
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+
+  /* ===== 本地部署中心（Termux 脚本管理）专属样式 ===== */
+  .local-deploy-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .local-deploy-detail {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+  }
+  .ld-detail-row {
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .ld-detail-row b {
+    color: var(--text-primary);
+  }
+  .ld-code {
+    margin: 0 0 8px 0;
+    padding: 10px;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    font-size: 10px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 260px;
+    overflow: auto;
+    font-family: "SFMono-Regular", Consolas, monospace;
+  }
+  .ld-cmd-multi {
+    margin: 6px 0 4px 0;
+    padding: 10px;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    font-size: 10px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 240px;
+    overflow: auto;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    cursor: pointer;
+  }
 /* 档案卡与折叠机制 */
 .archive-group-wrapper {
   margin-bottom: 12px;

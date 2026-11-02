@@ -104,7 +104,7 @@ class MainActivity : AppCompatActivity() {
 
         // 注入 window.AndroidMCP 原生接口并向静态通道注册主 Activity 引用
         AndroidMcp.mainActivity = this
-        androidMcp = AndroidMcp(this)
+        androidMcp = AndroidMcp.getInstance(this)
         webView.addJavascriptInterface(androidMcp, "AndroidMCP")
 
         // 加载 assets 本地打包的前端页面
@@ -130,6 +130,7 @@ class MainActivity : AppCompatActivity() {
     // 申请运行时权限
     private fun requestAppPermissions() {
         val permissions = mutableListOf(
+            // GPS 定位（网页“定位卡片/天气”需要）；Android 12+ 蓝牙扫描不依赖它(SCAN带neverForLocation)
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
@@ -142,6 +143,11 @@ class MainActivity : AppCompatActivity() {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             @Suppress("DEPRECATION")
             permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        // 蓝牙管理：Android 12+ 读取/连接蓝牙设备所需运行时权限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
         }
 
         val listToRequest = permissions.filter {
@@ -157,23 +163,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 蓝牙等运行时权限结果回执：转发给 AndroidMcp 记录（JS 权限引导用）
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        try {
+            if (permissions.any { it == Manifest.permission.BLUETOOTH_CONNECT || it == Manifest.permission.BLUETOOTH_SCAN }) {
+                AndroidMcp.recordBluetoothPermissionResult(permissions, grantResults)
+            }
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
     override fun onBackPressed() {
         if (webView.canGoBack()) {
             webView.goBack() // 返回键优先控制 WebView 回退
         } else {
             super.onBackPressed()
         }
-    }
-
-    override fun onDestroy() {
-        try {
-            // 停止 AlarmManager 后台心跳，并注销媒体控制 Receiver，避免内存泄漏
-            androidMcp.stopBackgroundPolling()
-            androidMcp.unregisterMediaReceiver()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        super.onDestroy()
     }
 }
 
@@ -190,6 +195,7 @@ class MainActivity : AppCompatActivity() {
 class McpForegroundService : Service() {
 
     companion object {
+        private const val TAG = "McpForegroundService"
         private const val CHANNEL_ID = "mcp_foreground_service_channel"
         private const val NOTIFICATION_ID = 1005
     }
@@ -206,6 +212,9 @@ class McpForegroundService : Service() {
 
         // 启动静默音频保活，保持 WebView JS 环境活跃
         startKeepAliveAudio()
+
+        // ★ 启动 Headless 后台中枢：即使 Activity 被销毁，JS 中枢（主动发信/闹钟/桌宠）依然存活
+        startHeadlessCenter()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -217,13 +226,73 @@ class McpForegroundService : Service() {
     override fun onDestroy() {
         // 停止静默音频保活
         stopKeepAliveAudio()
+        // 销毁后台中枢 WebView，释放渲染进程
+        try {
+            AndroidMcp.centerWebView?.stopLoading()
+            AndroidMcp.centerWebView?.destroy()
+        } catch (e: Exception) { e.printStackTrace() }
+        AndroidMcp.centerWebView = null
         // 兜底释放 AndroidMcp 持有的后台 WakeLock，防止服务被回收后 WakeLock 仍占用
         try {
             AndroidMcp.releaseWakeLockIfHeld()
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        // 释放蓝牙 SPP/GATT 连接资源
+        try {
+            AndroidMcp.releaseBluetoothIfHeld()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         super.onDestroy()
+    }
+
+    /**
+     * Headless 后台中枢：创建一个不挂接任何窗口的隐藏 WebView，加载完整 index.html。
+     * Activity 销毁后 JS 引擎随 Activity 的 WebView 一起消亡，但此中枢 WebView 由前台服务托管，
+     * 只要服务存活（常驻保活通知在），JS 中枢就持续运行。
+     * 注入目标策略：AndroidMcp.getEffectiveWebView() 优先返回本中枢，其次才兜底 Activity 的 WebView。
+     */
+    private fun startHeadlessCenter() {
+        try {
+            if (AndroidMcp.centerWebView != null) return
+            val webView = WebView(this)
+            val settings = webView.settings
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.allowFileAccess = true
+            settings.allowContentAccess = true
+            settings.databaseEnabled = true
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+            settings.mediaPlaybackRequiresUserGesture = false
+
+            val mcp = AndroidMcp.getInstance(applicationContext)
+            webView.addJavascriptInterface(mcp, "AndroidMCP")
+            webView.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    try {
+                        // 页面加载完成后注入中枢初始化（恢复会话/闹钟状态等）
+                        view?.evaluateJavascript(
+                            "javascript:if(window.initBackgroundCenter){window.initBackgroundCenter();}",
+                            null
+                        )
+                        android.util.Log.d(TAG, "后台中枢 JS 初始化注入完成")
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+
+            // 关键：不 addView 到任何窗口 —— Headless 模式只执行 JS，不渲染 UI
+            webView.loadUrl("file:///android_asset/index.html")
+            AndroidMcp.centerWebView = webView
+            android.util.Log.d(TAG, "Headless 后台中枢 WebView 已启动")
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "启动后台中枢 WebView 失败: ${e.message}")
+            e.printStackTrace()
+        }
     }
 
     /**
@@ -365,12 +434,12 @@ class BgPollReceiver : BroadcastReceiver() {
         val intervalMs = intent?.getLongExtra(EXTRA_INTERVAL_MS, DEFAULT_INTERVAL_MS) ?: DEFAULT_INTERVAL_MS
         // 链式重排下一次唤醒
         scheduleNextPoll(context, intervalMs)
-        // 强制在 UI 线程向 WebView 注入心跳 JS
-        val activity = AndroidMcp.mainActivity ?: return
-        activity.runOnUiThread {
+        // 向中枢 WebView 注入心跳 JS（Service Headless 优先，Activity 兜底）
+        // Activity 销毁后，Headless 中枢仍在，心跳照常驱动 JS 发信
+        val webView = AndroidMcp.getEffectiveWebView() ?: return
+        webView.post {
             try {
-                val webView = activity.findViewById<WebView>(R.id.webview)
-                webView?.evaluateJavascript(
+                webView.evaluateJavascript(
                     "javascript:if(window.desktopPetSystem && typeof window.desktopPetSystem.triggerBackgroundActiveMessageNative === 'function') { window.desktopPetSystem.triggerBackgroundActiveMessageNative(); }",
                     null
                 )
@@ -432,16 +501,28 @@ class BgPollReceiver : BroadcastReceiver() {
  */
 class InAppAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
+        // 停止响铃指令（通知上的"停止响铃"按钮触发）
+        if (intent?.action == ACTION_STOP_RINGTONE) {
+            stopRingtone()
+            try {
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                nm.cancel(1007)
+            } catch (e: Exception) { e.printStackTrace() }
+            return
+        }
         val message = intent?.getStringExtra(EXTRA_MESSAGE) ?: "叙事诗闹钟提醒"
-        // 1. 振动
+        // 0. ★ Kotlin 原生播放本地闹钟铃声（MediaPlayer 循环播放直到关闭，不依赖 JS 环境）
+        playAlarmRingtoneNative(context, message)
+        // 1. 三连振动（闹钟提醒强度）
         try {
+            val pattern = longArrayOf(0, 500, 200, 500, 200, 900)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager
-                vm.defaultVibrator.vibrate(android.os.VibrationEffect.createOneShot(1000L, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                vm.defaultVibrator.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1))
             } else {
                 @Suppress("DEPRECATION")
                 val v = context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
-                v.vibrate(android.os.VibrationEffect.createOneShot(1000L, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                v.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1))
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -453,14 +534,13 @@ class InAppAlarmReceiver : BroadcastReceiver() {
             e.printStackTrace()
         }
         // 3. 直接通过 evaluateJavascript 触发 AI 发信
-        //    配合 McpForegroundService 的静默音频保活，WebView JS 环境在后台保持活跃
-        val activity = AndroidMcp.mainActivity
-        if (activity != null) {
-            activity.runOnUiThread {
+        //    注入中枢 WebView（Service Headless 优先，Activity 兜底），Activity 销毁后仍可执行
+        val webView = AndroidMcp.getEffectiveWebView()
+        if (webView != null) {
+            webView.post {
                 try {
-                    val webView = activity.findViewById<WebView>(R.id.webview)
                     val quoted = org.json.JSONObject.quote(message)
-                    webView?.evaluateJavascript(
+                    webView.evaluateJavascript(
                         "javascript:if(window.desktopPetSystem && typeof window.desktopPetSystem.handleInAppAlarm === 'function') { window.desktopPetSystem.handleInAppAlarm($quoted); }",
                         null
                     )
@@ -469,6 +549,75 @@ class InAppAlarmReceiver : BroadcastReceiver() {
                 }
             }
         }
+    }
+
+    /**
+     * Kotlin 原生播放闹钟铃声：解析 message JSON 中的 ringtone 字段，
+     * 匹配 /Music/Storypoem 目录下的本地歌曲用 MediaPlayer 循环播放 20 秒。
+     * 完全不依赖 WebView JS 环境，退出应用后依然能响铃。
+     * 支持 "local:N" / 纯数字索引 / 歌曲标题模糊匹配。
+     */
+    private fun playAlarmRingtoneNative(context: Context, message: String) {
+        try {
+            var ringtone: Any? = null
+            try {
+                val obj = org.json.JSONObject(message)
+                if (obj.has("ringtone") && !obj.isNull("ringtone")) ringtone = obj.get("ringtone")
+            } catch (e: Exception) { return }
+            if (ringtone == null) return
+            val raw = ringtone.toString().trim()
+            if (raw.isEmpty() || raw == "default") return
+
+            val musicFiles = listMusicFiles(context)
+            var targetName: String? = null
+            if (raw.contains(":")) {
+                // "local:3" 本地歌曲索引（library 在线歌曲无法原生播放，忽略）
+                val parts = raw.split(":")
+                if (parts.size == 2 && parts[0] == "local") {
+                    val idx = parts[1].toIntOrNull() ?: return
+                    if (idx in musicFiles.indices) targetName = musicFiles[idx]
+                }
+            } else if (raw.matches(Regex("\\d+"))) {
+                val idx = raw.toInt()
+                if (idx in musicFiles.indices) targetName = musicFiles[idx]
+            } else {
+                targetName = musicFiles.firstOrNull { it.contains(raw, ignoreCase = true) }
+            }
+            if (targetName == null) return
+
+            val musicDir = getAlarmMusicDir(context)
+            val file = java.io.File(musicDir, targetName)
+            if (!file.exists()) return
+
+            // ★ 循环播放直到用户手动关闭（通知按钮 / MCP 面板"停止响铃"）
+            stopRingtone()
+            val player = android.media.MediaPlayer()
+            player.setDataSource(file.absolutePath)
+            player.isLooping = true
+            player.setVolume(1f, 1f)
+            player.prepare()
+            player.start()
+            ringtonePlayer = player
+            android.util.Log.d("InAppAlarmReceiver", "闹钟铃声循环播放中: $targetName")
+        } catch (e: Exception) {
+            android.util.Log.e("InAppAlarmReceiver", "播放闹钟铃声失败: ${e.message}")
+        }
+    }
+
+    private fun listMusicFiles(context: Context): List<String> {
+        return getAlarmMusicDir(context).listFiles { _, name ->
+            name.endsWith(".mp3", true) || name.endsWith(".wav", true) || name.endsWith(".m4a", true)
+        }?.map { it.name } ?: emptyList()
+    }
+
+    private fun getAlarmMusicDir(context: Context): java.io.File {
+        @Suppress("DEPRECATION")
+        val dir = java.io.File(
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC),
+            "Storypoem"
+        )
+        if (!dir.exists()) dir.mkdirs()
+        return dir
     }
 
     private fun showAlarmNotification(context: Context, message: String) {
@@ -515,6 +664,19 @@ class InAppAlarmReceiver : BroadcastReceiver() {
             .setDefaults(androidx.core.app.NotificationCompat.DEFAULT_SOUND)
             .setAutoCancel(true)
             .setContentIntent(pi)
+            // "停止响铃"按钮：直接广播给本 Receiver，停止循环铃声并关闭通知
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "停止响铃",
+                PendingIntent.getBroadcast(
+                    context,
+                    9993,
+                    Intent(context, InAppAlarmReceiver::class.java).apply {
+                        action = ACTION_STOP_RINGTONE
+                    },
+                    flags
+                )
+            )
             .build()
         nm.notify(1007, notification)
     }
@@ -522,6 +684,24 @@ class InAppAlarmReceiver : BroadcastReceiver() {
     companion object {
         private const val EXTRA_MESSAGE = "alarm_message"
         private const val REQUEST_CODE = 9992
+        const val ACTION_STOP_RINGTONE = "com.story.phone.ACTION_STOP_RINGTONE"
+
+        /** 当前循环播放中的闹钟铃声 MediaPlayer（进程级静态持有，供全局停止） */
+        @Volatile private var ringtonePlayer: android.media.MediaPlayer? = null
+
+        /** 停止闹钟铃声（通知按钮 / MCP 面板 / 取消闹钟时调用） */
+        @JvmStatic
+        fun stopRingtone() {
+            try {
+                ringtonePlayer?.stop()
+                ringtonePlayer?.release()
+            } catch (e: Exception) { e.printStackTrace() }
+            ringtonePlayer = null
+        }
+
+        /** 当前是否有闹钟铃声在响 */
+        @JvmStatic
+        fun isRingtonePlaying(): Boolean = ringtonePlayer?.isPlaying == true
 
         // 取消应用内闹钟：用相同 REQUEST_CODE 重建 PendingIntent 并 cancel
         fun cancel(context: Context): Boolean {
@@ -557,15 +737,23 @@ class InAppAlarmReceiver : BroadcastReceiver() {
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT
                 }
                 val pi = android.app.PendingIntent.getBroadcast(context, REQUEST_CODE, intent, flags)
-                // 优先精确闹钟（需 SCHEDULE_EXACT_ALARM），无权限则降级 setAndAllowWhileIdle
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (am.canScheduleExactAlarms()) {
-                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                // ★ 首选 setAlarmClock：闹钟标准 API，无需 SCHEDULE_EXACT_ALARM 权限，
+                //   系统保证精确触发（锁屏/Doze 下同样准时），并在状态栏显示闹钟图标
+                try {
+                    val alarmInfo = android.app.AlarmManager.AlarmClockInfo(triggerAtMillis, null)
+                    am.setAlarmClock(alarmInfo, pi)
+                } catch (e1: Exception) {
+                    e1.printStackTrace()
+                    // 降级 1：精确闹钟（需 SCHEDULE_EXACT_ALARM 权限）
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (am.canScheduleExactAlarms()) {
+                            am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                        } else {
+                            am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                        }
                     } else {
-                        am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
                     }
-                } else {
-                    am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
                 }
                 true
             } catch (e: Exception) {

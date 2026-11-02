@@ -318,7 +318,7 @@ ${altSection}
         // 可见范围：同分组角色
         const char = await db.archives.get(charId);
         const group = char?.group || "";
-        const allChars = await db.archives.where("type").equals("character").toArray();
+        const allChars = (await db.archives.where("type").equals("character").toArray()).filter(c => !c.isSnapshot);
         const sameGroupCharIds = allChars
           .filter(c => c.id !== charId && (c.group || "") === group)
           .map(c => c.id);

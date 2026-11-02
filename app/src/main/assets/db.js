@@ -304,3 +304,121 @@ db.version(32).stores({
   qt_variables:  'id++, gameId, key, value, lastRound, editable',
   qt_beautify:   'id++, name, themeColor, background, css, regexRules, createdAt'
 });
+
+// ============================================
+// 🎯 Version 33：第四面墙·故人来信 & 阅读用户创作
+// - qt_fanwall_letters:  任务完结后故人来信（信件/打字消息流/归档状态）
+//   * branch: 'letter' (否分支·信件) | 'dialog' (是分支·打字消息流)
+//   * deepened: 0=未深入, 1=已深入(角色已拉入档案馆与聊天列表)
+// - reader_user_paragraph_comments: 用户自写书的段落评论存储（路人段评）
+//   reader_books/reader_chapters 复用，用 isImported=3 标记用户自写书
+// ============================================
+db.version(33).stores({
+  qt_fanwall_letters: 'id++, gameId, charName, branch, deepened, createdAt',
+  reader_user_paragraph_comments: 'id++, bookId, chapterId, paraIdx, charName, content, createdAt'
+});
+
+// ============================================
+// 🎯 Version 34：快穿局·文风特调
+// - qt_styles: 文风套件（名称/提示词，可导入导出，高优先级注入 AI 提示词）
+//   * builtin: 内置文风标记（不可删除）
+//   * promptHint: 注入到 prompt 的文风约束（最高优先级，凌驾于其他写作要求）
+//   * version: 内置文风版本号（用于自动升级）
+// ============================================
+db.version(34).stores({
+  qt_styles: 'id++, name, builtin, version, createdAt'
+});
+
+// ============================================
+// 🎯 Version 35：原始对话向量检索表
+// - dialogue_vectors: 每一轮原始对话(user+char)的预计算向量
+//   * sessionId: 所属会话
+//   * roundIndex: 轮次序号（用于排序与去重）
+//   * userText / charText / combinedText: 该轮对话原文（截断存储）
+//   * vector: 该轮 combinedText 的 embedding（Dexie 透明存储，不声明索引）
+//   * timestamp: 该轮时间戳（用于时间衰减）
+//   独立于 summaries 表的总结检索，作为第二维"原始对话"召回源 [3]
+// ============================================
+db.version(35).stores({
+  dialogue_vectors: 'id++, sessionId, roundIndex, timestamp'
+});
+
+// ============================================
+// Version 36：对话快照（文件管理）表
+// - chat_archives: 单聊对话的即时快照存档
+//   * userId: 快照归属的 user 面具 ID（用于按 user 分类）
+//   * charId: 快照对应的 char 档案 ID（用于按 char 分类）
+//   * customLabel: 用户自定义字段（全局唯一，用于命名与检索）
+//   * charName / userName: 快照时刻的显示名（冗余存储，便于分类展示）
+//   * createdAt: 创建时间戳
+//   * snapshotData: 完整对话数据快照（透明存储，含 session/messages/summaries/status_history 等）
+// ============================================
+db.version(36).stores({
+  chat_archives: 'id++, userId, charId, customLabel, createdAt'
+});
+
+// ============================================
+// 🎯 Version 37：支线人物落库 + sessions.groupId 索引
+// - sessions: 补建 groupId 索引，修复 "KeyPath groupId on object store sessions is not indexed" SchemaError
+// - archives: 新增 isSnapshot / sourceArchiveId 索引，支线人物（对话快照分支）作为独立档案落库，
+//   通过 isSnapshot=true 在档案库列表中过滤隐藏，名字/分组/备注区分，parentId 指向主线人物本体
+// ============================================
+db.version(37).stores({
+  sessions: 'id++, userId, charId, isGroup, groupId, customCharName, customCharAvatar, customCharPersona, customUserAvatar, customUserPersona, lastMessageTime, mountedEntryIds, offlineMinWordCount, offlineMaxWordCount, offlineAutoSummaryCount, offlineMountedEntryIds, stickerMountedGroupIds, autoSummaryToggle, autoSummaryInterval, bufferRounds, summarySystemPrompt, coreSelfStatus, coreSelfPurpose, coreSelfChanges, coreRelationship, coreUserInEyes',
+  archives: 'id++, type, name, avatar, remark, group, persona, parentId, isSnapshot, sourceArchiveId'
+});
+
+// ============================================
+// Version 38：工作台 Agent（多对话 + 本地工作区 + GitHub）
+// - wb_conversations: 会话（标题/工作区/GitHub/系统规则/统计）
+// - wb_messages: 会话消息（role: user|assistant|tool|system）
+// ============================================
+db.version(38).stores({
+  wb_conversations: 'id++, title, workspace, workspaceLabel, github, systemPrompt, summary, createdAt, updatedAt, totalTokensIn, totalTokensOut, cacheHits',
+  wb_messages: 'id++, convId, seq, role, content, createdAt'
+});
+
+// ============================================
+// Version 39：工作台独立 MCP 服务器配置（不依赖原有 MCP 客户端）
+// - wb_mcp_servers: 工作台自己的 MCP 服务器（名称/分组/类型/URL/Headers/工具列表/开关）
+// ============================================
+db.version(39).stores({
+  wb_mcp_servers: 'id++, name, group, type, url, headers, enabled, tools, updatedAt'
+});
+
+// ============================================
+// Version 40：工作台 Agent 标准化配置
+// - wb_agents: Agent（角色/描述/系统提示/建议模型/启用 Skills）
+// - wb_skills: Skill（标准化能力指令集，名称/描述/指令/内置标记）
+// ============================================
+db.version(40).stores({
+  wb_agents: 'id++, name, description, systemPrompt, model, skills, builtin, enabled, updatedAt',
+  wb_skills: 'id++, name, description, instructions, builtin, enabled, updatedAt'
+});
+
+// ============================================
+// Version 41：仪轨（日程/穿着/随身物品/位置 四维状态）+ 纪念日倒数
+// - ritual_states: 某主体（char/user）某一天的四维状态；[subjectType+subjectId+date] 复合索引便于按人按日取
+// - ritual_anniversaries: 纪念日（纯倒数，替代原情侣空间的"日程式纪念日"）
+// ============================================
+db.version(41).stores({
+  ritual_states: 'id++, meId, subjectType, subjectId, date, source, updatedAt, [subjectType+subjectId+date]',
+  ritual_anniversaries: 'id++, charId, meId, date, createdAt'
+});
+
+// ============================================
+// Version 42：仪轨 · 衣柜（每个角色/用户单独管理衣物）
+// - ritual_wardrobe: 某主体某个类别下的一件衣物（image 为可选 data URL，空则用内置占位图标）
+// ============================================
+db.version(42).stores({
+  ritual_wardrobe: 'id++, subjectType, subjectId, category, name, createdAt'
+});
+
+// ============================================
+// Version 43：桌面图片资源（照片卡 / 横幅背景 / 壁纸等）
+// - assets: key 为资源名，data 为 data URL
+//   IndexedDB 配额远大于 localStorage（5MB），照片不必再牺牲画质压缩
+// ============================================
+db.version(43).stores({
+  assets: 'key, updatedAt'
+});

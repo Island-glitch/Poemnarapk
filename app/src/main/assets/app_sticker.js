@@ -10,6 +10,7 @@ let stickerItems = {};             // key: groupId, value: items[]
 let selectedStickerGroupId = null; // 管理面板当前选中的分组
 let currentEditItem = null;        // 正在编辑的表情包条目
 let stickerInitDone = false;       // 是否已完成初始化
+let pendingStickerFiles = [];      // onchange 时缓存的待上传图片（规避部分 WebView 点击按钮时 input.files 丢失）
 
 // ============================================================
 //  自研 WeChat-Style Toast 提示服务 (防止调用ReferenceError)
@@ -303,14 +304,22 @@ function showStickerAddModal() {
     showToast('请先选择一个分组');
     return;
   }
-  
+
   const overlay = document.getElementById('sticker-add-overlay');
   if (!overlay) return;
+  // 重置上次残留的文件缓存与预览，避免误用旧选择
+  pendingStickerFiles = [];
+  const fileInput = document.getElementById('sticker-file-input');
+  if (fileInput) fileInput.value = '';
+  const preview = document.getElementById('sticker-upload-preview');
+  if (preview) preview.innerHTML = '';
   overlay.classList.add('active');
   switchStickerAddMethod('upload');
 }
 
 function switchStickerAddMethod(method) {
+  // 切换到非 upload 方式时清空文件缓存，避免下次回到 upload 误用旧文件
+  if (method !== 'upload') pendingStickerFiles = [];
   const uploadArea = document.getElementById('sticker-upload-area');
   const batchArea = document.getElementById('sticker-batch-area');
   const uploadTab = document.getElementById('sticker-method-upload');
@@ -323,21 +332,66 @@ function switchStickerAddMethod(method) {
 }
 
 // ============================================================
-//  添加表情包：方法1 - 单张图片上传
+//  添加表情包：方法1 - 本地照片上传（支持多选批量导入）
 // ============================================================
+
+// 文件选择后即时预览（单张预览大图，多张显示缩略图网格）
+function previewStickerFiles() {
+  const fileInput = document.getElementById('sticker-file-input');
+  const preview = document.getElementById('sticker-upload-preview');
+  if (!fileInput || !fileInput.files || !preview) return;
+
+  const files = Array.from(fileInput.files).filter(f => f.type.startsWith('image/'));
+  // 缓存选中文件：部分 Android WebView 在用户点击"上传"按钮时 input.files 已被清空，
+  // 此处于 onchange（文件刚选完、必定可用时）留底，提交时优先读取该缓存。
+  pendingStickerFiles = files;
+  if (files.length === 0) { preview.innerHTML = ''; return; }
+
+  if (files.length === 1) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      preview.innerHTML = `<img src="${e.target.result}" style="max-width:100%;max-height:120px;border-radius:8px;display:block;margin:10px auto;border:1px solid var(--border);">`;
+    };
+    reader.readAsDataURL(files[0]);
+  } else {
+    preview.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;">已选择 ${files.length} 张图片，将以文件名作为释义批量导入：</div><div style="display:flex;flex-wrap:wrap;gap:6px;"></div>`;
+    const grid = preview.querySelector('div:last-child');
+    files.forEach(file => {
+      const reader = new FileReader();
+      const name = file.name.replace(/\.[^/.]+$/, '');
+      reader.onload = (e) => {
+        grid.insertAdjacentHTML('beforeend',
+          `<div style="position:relative;width:58px;height:58px;border-radius:6px;overflow:hidden;border:1px solid var(--border);">` +
+          `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">` +
+          `<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:8px;text-align:center;padding:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</div>` +
+          `</div>`);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+}
+
 function handleStickerUpload() {
   const fileInput = document.getElementById('sticker-file-input');
-  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+  // 优先使用 onchange 缓存的文件，规避部分 WebView 点击按钮瞬间 input.files 被清空导致"没有选择文件"
+  let files = (pendingStickerFiles && pendingStickerFiles.length > 0)
+    ? pendingStickerFiles
+    : (fileInput && fileInput.files ? Array.from(fileInput.files) : []);
+  files = files.filter(f => f.type.startsWith('image/'));
+
+  if (files.length === 0) {
     showToast('请先选择一张图片');
     return;
   }
-  
-  const file = fileInput.files[0];
-  if (!file.type.startsWith('image/')) {
-    showToast('请选择图片文件');
+
+  // 多选批量导入：以文件名作为释义自动导入
+  if (files.length > 1) {
+    handleStickerBatchUploadFiles(files);
     return;
   }
-  
+
+  // 单张：保持原有逻辑（预览 + 手动输入释义）
+  const file = files[0];
   const reader = new FileReader();
   reader.onload = async (e) => {
     const imageUrl = e.target.result;
@@ -345,21 +399,59 @@ function handleStickerUpload() {
     if (preview) {
       preview.innerHTML = `<img src="${imageUrl}" style="max-width:100%;max-height:120px;border-radius:8px;display:block;margin:10px auto;border:1px solid var(--border);">`;
     }
-    
+
     const caption = prompt('请输入此表情包的释义（用于 AI 理解，如：乖巧、流泪）：');
     if (!caption || !caption.trim()) {
       showToast('已取消添加');
       return;
     }
-    
+
     await addStickerItem(selectedStickerGroupId, imageUrl, caption.trim());
-    
-    fileInput.value = '';
+
+    pendingStickerFiles = [];
+    if (fileInput) fileInput.value = '';
     if (preview) preview.innerHTML = '';
     document.getElementById('sticker-add-overlay')?.classList.remove('active');
     showToast('表情导入成功');
   };
   reader.readAsDataURL(file);
+}
+
+// 批量导入多张本地图片（以文件名作为释义）
+async function handleStickerBatchUploadFiles(files) {
+  const preview = document.getElementById('sticker-upload-preview');
+  showToast('正在批量导入 ' + files.length + ' 张表情包…');
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const file of files) {
+    try {
+      const imageUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
+      });
+      const caption = file.name.replace(/\.[^/.]+$/, '').trim() || '未命名';
+      await addStickerItem(selectedStickerGroupId, imageUrl, caption);
+      successCount++;
+    } catch (err) {
+      failCount++;
+    }
+  }
+
+  const fileInput = document.getElementById('sticker-file-input');
+  if (fileInput) fileInput.value = '';
+  pendingStickerFiles = [];
+  if (preview) preview.innerHTML = '';
+  document.getElementById('sticker-add-overlay')?.classList.remove('active');
+
+  if (successCount > 0) {
+    showToast('批量导入完成：成功 ' + successCount + ' 张' + (failCount > 0 ? '，失败 ' + failCount + ' 张' : ''));
+  } else {
+    showToast('批量导入失败');
+  }
 }
 
 // ============================================================
@@ -807,6 +899,7 @@ window.stickerSystem = {
   deleteStickerGroup,
   showStickerAddModal,
   switchStickerAddMethod,
+  previewStickerFiles,
   handleStickerUpload,
   handleStickerBatchUpload,
   showStickerEditModal,

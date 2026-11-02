@@ -96,7 +96,12 @@
             </div>
             <div class="form-group">
               <label>API Key</label>
-              <input type="password" id="vm-api-key" placeholder="sk-...">
+              <div style="display:flex; gap:6px; align-items:center;">
+                <input type="password" id="vm-api-key" placeholder="sk-..." style="flex:1;">
+                <button type="button" class="btn-copy-key" onclick="copyApiKey('vm-api-key')" title="复制 Key" style="width:36px; height:36px; border:1.5px solid var(--border); background:var(--surface); border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0;">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary);"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
             </div>
             <div class="form-group">
               <label>模型选择</label>

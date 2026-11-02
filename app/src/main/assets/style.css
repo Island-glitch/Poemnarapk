@@ -49,6 +49,8 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* 基础外观 = 原版（清透凉夏等旧主题必须与改动前一模一样）；
+   任何主题化的东西（圆形图标、胶囊 dock、隐藏名称…）都放在各主题自己的 activeCss 里 */
 #desktop {
   flex: 1;
   padding: 30px 20px 20px 20px;
@@ -74,6 +76,7 @@ body {
   cursor: grabbing;
   transform: scale(0.95);
 }
+/* 基础外观保持原样（58px 圆角方图标 + 名称）；M3 桌面由预设的 activeCss 覆盖 */
 .icon-wrapper {
   width: 58px;
   height: 58px;
@@ -101,6 +104,10 @@ body {
   width: 100%;
   text-align: center;
 }
+
+/* 心动游戏 / 占位图标（v1.5.21 新增）：原版桌面（含清透凉夏）下的默认图标色 */
+.app-icon[data-app="heartgame"] .icon-wrapper { color: #d97fa8; }
+.app-icon[data-app="placeholder"] .icon-wrapper { color: #7e97c9; }
 
 #dock {
   padding: 12px 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px;
@@ -130,7 +137,20 @@ body {
   }
 }
 
-/* 桌面翻页指示器样式 */
+/* 桌面卡片（时钟 / 照片 / 横幅 / 搜索条）与自定义小部件的容器 */
+.desktop-widget-container,
+.desktop-tile {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+.desktop-tile {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 桌面翻页指示器样式（原版） */
 #desktop-page-indicator {
   display: flex;
   justify-content: center;
@@ -169,3 +189,243 @@ body {
   margin-left: 4px;
   line-height: 1;
 }
+
+/* ============================================================
+   破限世界书挂载（v1.5.20）
+   淡彩卡片风格：低饱和蓝紫渐变 + 毛玻璃 + 胶囊分组
+   ============================================================ */
+.jb-summary-empty {
+  font-size: 11px;
+  color: #9aa3b2;
+  background: linear-gradient(135deg, #f7f9fd 0%, #f4f6fb 100%);
+  border: 1px dashed #dfe5f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  line-height: 1.55;
+}
+.jb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.jb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #55617a;
+  background: linear-gradient(135deg, #eef4ff 0%, #f3f0ff 100%);
+  border: 1px solid #e0e6f5;
+  box-shadow: 0 1px 3px rgba(90, 110, 160, 0.06);
+}
+.jb-chip.missing {
+  color: #b0899a;
+  background: linear-gradient(135deg, #fff4f7 0%, #f8f2ff 100%);
+  border-color: #f2dde5;
+}
+.jb-chip-group {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #8f9bb3;
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.jb-summary-note {
+  margin-top: 7px;
+  font-size: 10px;
+  color: #a6aebe;
+  line-height: 1.5;
+}
+
+.jb-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(24, 28, 40, 0.34);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+.jb-picker-overlay.active { opacity: 1; pointer-events: auto; }
+
+.jb-picker-sheet {
+  width: 100%;
+  max-width: 430px;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(168deg, #fbfcff 0%, #f7f8fe 46%, #f6f4fd 100%);
+  border-radius: 24px 24px 0 0;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 -12px 40px rgba(70, 84, 130, 0.16);
+  transform: translateY(18px);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.jb-picker-overlay.active .jb-picker-sheet { transform: translateY(0); }
+
+.jb-picker-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 18px 18px 12px;
+}
+.jb-picker-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #3c4360;
+  letter-spacing: 0.01em;
+}
+.jb-picker-sub {
+  margin-top: 5px;
+  font-size: 11px;
+  color: #98a0b4;
+  line-height: 1.55;
+  max-width: 300px;
+}
+.jb-picker-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(140, 152, 180, 0.13);
+  color: #8f98ae;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.jb-picker-close:active { transform: scale(0.9); }
+
+.jb-picker-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 16px 8px;
+  scrollbar-width: none;
+}
+.jb-picker-body::-webkit-scrollbar { display: none; }
+
+.jb-group { margin-bottom: 14px; }
+.jb-group-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #97a0b6;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+.jb-group-count {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #a9b2c6;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.jb-group-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.jb-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  padding: 11px 11px 11px 12px;
+  border-radius: 15px;
+  border: 1.5px solid #e7ecf7;
+  background: linear-gradient(150deg, #ffffff 0%, #f8faff 100%);
+  box-shadow: 0 2px 7px rgba(96, 112, 160, 0.06);
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.14s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+.jb-card:active { transform: scale(0.975); }
+.jb-card.on {
+  border-color: #b9c8ee;
+  background: linear-gradient(150deg, #eef3ff 0%, #f4efff 100%);
+  box-shadow: 0 4px 14px rgba(108, 126, 200, 0.14);
+}
+.jb-card-check {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  border-radius: 6px;
+  border: 1.5px solid #dbe2f2;
+  background: #fff;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.jb-card.on .jb-card-check {
+  border-color: transparent;
+  background: linear-gradient(135deg, #8fa8e8 0%, #a693e0 100%);
+}
+.jb-card-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.jb-card-title {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #4a5372;
+  line-height: 1.35;
+}
+.jb-card.on .jb-card-title { color: #3f4a78; }
+.jb-card-preview {
+  font-size: 9.5px;
+  color: #a3aabd;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.jb-picker-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #eef1f8;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+}
+.jb-picker-count { font-size: 11px; font-weight: 700; color: #98a0b4; }
+.jb-btn {
+  border: none;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 9px 18px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.jb-btn.ghost {
+  background: rgba(140, 152, 180, 0.12);
+  color: #7d879e;
+}
+.jb-btn.primary {
+  background: linear-gradient(135deg, #8fa8e8 0%, #a693e0 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(140, 152, 220, 0.28);
+}
+.jb-btn:active { transform: scale(0.96); }

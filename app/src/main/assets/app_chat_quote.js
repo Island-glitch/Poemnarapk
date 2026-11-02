@@ -88,7 +88,9 @@
           if (session && session.isGroup === 1) {
             if (Number(msg.senderId) === 99999) {
               const groupObj = await db.groups.get(session.groupId);
-              const botObj = (groupObj && groupObj.bots && groupObj.bots.length > 0) ? groupObj.bots[0] : null;
+              const botObj = (window.groupChatSystem && window.groupChatSystem.resolveBot)
+                ? window.groupChatSystem.resolveBot(groupObj, msg)
+                : ((groupObj && groupObj.bots && groupObj.bots.length > 0) ? groupObj.bots[0] : null);
               senderName = botObj ? botObj.name : "群助手";
             } else {
               const charObj = await db.archives.get(Number(msg.senderId));
@@ -222,37 +224,47 @@
     }
 
     // 格式化与解析对白里的引用指令，兼容标准与非标准中英文全半角括号
+    // [5] 支持消息中间引用：不再强制 ^ 锚点，引用标签可出现在消息任意位置
     async parseQuote(content) {
       if (typeof content !== 'string') return null;
-      
-      const match = content.match(/^[\[【](QUOTE|引用)\s*:\s*(\d+)[\]】]\s*/i);
-      if (!match) return null;
 
-      const quoteMsgId = Number(match[2]);
-      let cleanText = content.replace(match[0], '').trim();
+      // 全局匹配所有引用标签 [QUOTE:ID] / 【QUOTE:ID】 / [引用:ID】 / 【引用:ID】
+      const quoteRegex = /[\[【](QUOTE|引用)\s*:\s*(\d+)[\]】]\s*/gi;
+      const matches = [...content.matchAll(quoteRegex)];
+      if (matches.length === 0) return null;
+
+      // 取第一个引用作为主引用块渲染（保持向后兼容）
+      const firstMatch = matches[0];
+      const quoteMsgId = Number(firstMatch[2]);
+
+      // 清理所有引用标签，保留纯对白文本
+      let cleanText = content.replace(quoteRegex, '').trim();
 
       try {
         const quotedMsg = await db.messages.get(quoteMsgId);
         if (!quotedMsg) return { quoteHtml: '', cleanText };
 
         // 核心自愈：自动清洗可能意外漏过或幻觉产生的复读被引用消息原文的异常行为 [1.1]
+        // [5] 适配中间引用：自愈正则去掉 ^ 锚点，支持任意位置的复读清洗
         const origText = quotedMsg.content;
-        const origBareText = typeof origText === 'string' ? origText.replace(/^[\[【](QUOTE|引用)\s*:\s*(\d+)[\]】]\s*/i, '').trim() : "";
+        const origBareText = typeof origText === 'string' ? origText.replace(/[\[【](QUOTE|引用)\s*:\s*(\d+)[\]】]\s*/gi, '').trim() : "";
         if (origBareText) {
-          // 1. 拦截清洗 bare text 物理重复：如 "[QUOTE:1] 你真好 我也觉得" -> "我也觉得"
-          if (cleanText.toLowerCase().startsWith(origBareText.toLowerCase())) {
-            cleanText = cleanText.substring(origBareText.length).trim();
+          // 1. 拦截清洗 bare text 物理重复：在 cleanText 任意位置出现原话都清除
+          const lowerClean = cleanText.toLowerCase();
+          const lowerOrig = origBareText.toLowerCase();
+          if (lowerClean.includes(lowerOrig)) {
+            cleanText = cleanText.replace(new RegExp(origBareText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '').trim();
           }
-          
-          // 2. 拦截并清洗带中英文引号的重复：如 '[QUOTE:1] "原话" 你的新回复'
-          const quotesRegex = /^["'“‘『「\(（【\[]*(.*?)[”’』」\)）】\]]*\s*/;
-          const quoteMatch = cleanText.match(quotesRegex);
-          if (quoteMatch) {
-            const innerText = quoteMatch[1].trim();
-            if (innerText && (innerText.toLowerCase() === origBareText.toLowerCase() || origBareText.toLowerCase().includes(innerText.toLowerCase()))) {
-              cleanText = cleanText.replace(quotesRegex, '').trim();
+
+          // 2. 拦截并清洗带中英文引号的重复：如 '"原话" 你的新回复'
+          const quotesRegex = /["'“‘『「\(（【\[]+(.*?)[”’』」\)）】\]]+\s*/g;
+          cleanText = cleanText.replace(quotesRegex, (full, inner) => {
+            const innerText = inner.trim();
+            if (innerText && (innerText.toLowerCase() === lowerOrig || lowerOrig.includes(innerText.toLowerCase()))) {
+              return '';
             }
-          }
+            return full;
+          }).trim();
         }
 
         let senderName = "未知好友";
@@ -264,7 +276,9 @@
           if (session && session.isGroup === 1) {
             if (Number(quotedMsg.senderId) === 99999) {
               const groupObj = await db.groups.get(session.groupId);
-              const botObj = (groupObj && groupObj.bots && groupObj.bots.length > 0) ? groupObj.bots[0] : null;
+              const botObj = (window.groupChatSystem && window.groupChatSystem.resolveBot)
+                ? window.groupChatSystem.resolveBot(groupObj, quotedMsg)
+                : ((groupObj && groupObj.bots && groupObj.bots.length > 0) ? groupObj.bots[0] : null);
               senderName = botObj ? botObj.name : "群助手";
             } else {
               const charObj = await db.archives.get(Number(quotedMsg.senderId));

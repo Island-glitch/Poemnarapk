@@ -1123,6 +1123,7 @@
         text-align: center;
         letter-spacing: 2px;
       }
+      .qt-overlay-title svg { width: 18px; height: 18px; vertical-align: middle; margin-right: 4px; }
 
       /* === 总结/变量表格：浅色内凹卡片 === */
       .qt-summary-card {
@@ -1339,7 +1340,8 @@
     network: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="12" y1="13" x2="6" y2="17"/><line x1="12" y1="13" x2="18" y2="17"/></svg>',
     finish: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
     gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
-    help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    style: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/><line x1="17.5" y1="15" x2="9" y2="15"/></svg>'
   };
 
   // ============================================================
@@ -1372,9 +1374,7 @@
 
   async function qtGetApi() {
     try {
-      const presetId = localStorage.getItem('global_api_preset_id');
-      if (!presetId) return null;
-      const api = await db.api_presets.get(Number(presetId));
+      const api = (window.apiRoutes && typeof window.apiRoutes.resolve === 'function') ? await window.apiRoutes.resolve('quicktravel') : null;
       if (!api || !api.url || !api.key) return null;
       return { url: api.url.replace(/\/$/, ''), key: api.key, model: api.model || 'gpt-4o-mini' };
     } catch (e) { return null; }
@@ -1384,6 +1384,10 @@
     options = options || {};
     const api = await qtGetApi();
     if (!api) throw new Error('未配置全局 API，请前往系统设置配置');
+    if (typeof window.fwCallLLM === 'function') {
+      try { return await window.fwCallLLM(api, messages, { temperature: options.temperature != null ? options.temperature : 0.85 }); }
+      catch (e) { /* fall through to original */ }
+    }
     const body = {
       model: api.model,
       messages: messages,
@@ -1588,7 +1592,7 @@
   // 从档案库选择身份
   async function qtOpenArchiveSelector() {
     let archives = [];
-    try { archives = await db.archives.where('type').anyOf(['user', 'character']).toArray(); } catch (e) {}
+    try { archives = (await db.archives.where('type').anyOf(['user', 'character']).toArray()).filter(a => !a.isSnapshot); } catch (e) {}
     const overlay = document.getElementById('qt-overlay');
     let html = '<div class="qt-overlay-card">';
     html += '<button class="qt-overlay-close" onclick="document.getElementById(\'qt-overlay\').classList.remove(\'active\')">' + QT_ICONS.close + '</button>';
@@ -1877,6 +1881,11 @@
     try { wv = await db.qt_worldviews.get(game.worldviewId); } catch (e) {}
     let msgCount = 0;
     try { msgCount = await db.qt_messages.where('gameId').equals(game.id).count(); } catch (e) {}
+
+    // 查询是否有故人来信（第四面墙）
+    let letters = [];
+    try { letters = await db.qt_fanwall_letters.where('gameId').equals(game.id).toArray(); } catch (e) {}
+
     let html = '<div class="qt-overlay-card">';
     html += '<button class="qt-overlay-close" onclick="document.getElementById(\'qt-overlay\').classList.remove(\'active\')">' + QT_ICONS.close + '</button>';
     html += '<div class="qt-overlay-title">' + qtEscape(game.title || '未命名') + '</div>';
@@ -1884,23 +1893,138 @@
       <div>总轮数：${game.currentRound || 0}</div>
       <div>消息数：${msgCount}</div>
       ${wv ? '<div>世界观：' + qtEscape(wv.title) + '</div>' : ''}
+      ${letters.length > 0 ? '<div style="color:' + QT_COLORS.gold + ';">故人来信：' + letters.length + ' 封</div>' : ''}
     </div>`;
-    html += `<div style="margin-top:16px; display:flex; gap:8px;">
-      <button class="qt-btn qt-btn-danger" id="qt-del-completed" style="flex:1;">删除记录</button>
-    </div>`;
+
+    // 操作按钮
+    html += `<div style="margin-top:16px; display:flex; flex-direction:column; gap:8px;">`;
+    html += `<button class="qt-btn" id="qt-view-history" style="width:100%;">查看对话历史</button>`;
+    if (letters.length > 0) {
+      html += `<button class="qt-btn" id="qt-view-letters" style="width:100%; color:${QT_COLORS.gold}; border-color:${QT_COLORS.gold};">查看故人来信（${letters.length}）</button>`;
+    }
+    html += `<button class="qt-btn qt-btn-danger" id="qt-del-completed" style="width:100%;">删除记录</button>`;
+    html += `</div>`;
     html += '</div>';
     overlay.innerHTML = html;
     overlay.classList.add('active');
+
+    // 查看对话历史
+    document.getElementById('qt-view-history').onclick = async () => {
+      await qtShowGameHistory(game);
+    };
+
+    // 查看故人来信
+    const letterBtn = document.getElementById('qt-view-letters');
+    if (letterBtn) {
+      letterBtn.onclick = async () => {
+        await qtShowFanwallLetters(game, letters);
+      };
+    }
+
     document.getElementById('qt-del-completed').onclick = async () => {
       if (!confirm('确定删除此完结记录？相关消息和总结也将被删除。')) return;
       await db.qt_games.delete(game.id);
       await db.qt_messages.where('gameId').equals(game.id).delete();
       await db.qt_summaries.where('gameId').equals(game.id).delete();
       await db.qt_variables.where('gameId').equals(game.id).delete();
+      try { await db.qt_fanwall_letters.where('gameId').equals(game.id).delete(); } catch (e) {}
       overlay.classList.remove('active');
       qtToast('已删除');
       qtRenderSystemSpace();
     };
+  }
+
+  // 查看对话历史（正确渲染正则美化）
+  async function qtShowGameHistory(game) {
+    const overlay = document.getElementById('qt-overlay');
+    let wv = null;
+    try { wv = await db.qt_worldviews.get(game.worldviewId); } catch (e) {}
+    let beautify = null;
+    if (game.beautifyId) {
+      try { beautify = await db.qt_beautify.get(game.beautifyId); } catch (e) {}
+    }
+    // 注入美化 CSS（临时）
+    let beautifyStyle = document.getElementById('qt-game-beautify-css');
+    if (!beautifyStyle) {
+      beautifyStyle = document.createElement('style');
+      beautifyStyle.id = 'qt-game-beautify-css';
+      document.head.appendChild(beautifyStyle);
+    }
+    beautifyStyle.textContent = beautify && beautify.css ? beautify.css : '';
+
+    let messages = [];
+    try { messages = await db.qt_messages.where('gameId').equals(game.id).toArray(); } catch (e) {}
+    messages.sort((a, b) => (a.round || 0) - (b.round || 0) || (a.id || 0) - (b.id || 0));
+
+    let identity = null;
+    try { identity = await db.qt_identity.get(game.identityId); } catch (e) {}
+
+    let html = '<div class="qt-overlay-card" style="max-height:90vh; overflow-y:auto;">';
+    html += '<button class="qt-overlay-close" id="qt-history-back">' + QT_ICONS.back + '</button>';
+    html += '<div class="qt-overlay-title">对话历史 · ' + qtEscape(game.title || '未命名') + '</div>';
+    html += `<div style="font-size:11px; color:${QT_COLORS.textSub}; margin-bottom:12px;">共 ${messages.length} 条消息</div>`;
+
+    if (messages.length === 0) {
+      html += `<div style="text-align:center; color:${QT_COLORS.textSub}; padding:30px;">暂无对话记录</div>`;
+    } else {
+      html += '<div class="qt-history-list">';
+      for (const m of messages) {
+        const isUser = m.role === 'user';
+        const senderName = isUser ? (identity ? identity.name : '玩家') : '叙事';
+        const avatarHtml = isUser
+          ? (identity && identity.avatar ? `<img src="${qtEscape(identity.avatar)}" style="width:28px; height:28px; border-radius:50%; object-fit:cover; flex-shrink:0;">` : `<div style="width:28px; height:28px; border-radius:50%; background:${QT_COLORS.accent}; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;">${qtEscape((senderName || '我').charAt(0))}</div>`)
+          : `<div style="width:28px; height:28px; border-radius:50%; background:${QT_COLORS.silver}; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;">叙</div>`;
+        const contentHtml = isUser
+          ? qtEscape(String(m.content || '')).replace(/\n/g, '<br>')
+          : qtRenderAiContent(m.content, beautify);
+        html += `<div style="display:flex; gap:8px; margin-bottom:14px; align-items:flex-start;">
+          ${avatarHtml}
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:11px; color:${QT_COLORS.textSub}; margin-bottom:2px;">${qtEscape(senderName)} · 第${m.round || '?'}轮</div>
+            <div style="font-size:13px; color:${QT_COLORS.textMain}; line-height:1.7; word-break:break-word;">${contentHtml}</div>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    overlay.innerHTML = html;
+    overlay.classList.add('active');
+    document.getElementById('qt-history-back').onclick = () => qtOpenCompletedGameDetail(game);
+  }
+
+  // 查看故人来信
+  async function qtShowFanwallLetters(game, letters) {
+    const overlay = document.getElementById('qt-overlay');
+    let html = '<div class="qt-overlay-card" style="max-height:90vh; overflow-y:auto;">';
+    html += '<button class="qt-overlay-close" id="qt-letters-back">' + QT_ICONS.back + '</button>';
+    html += '<div class="qt-overlay-title">故人来信 · ' + qtEscape(game.title || '未命名') + '</div>';
+    html += `<div style="font-size:11px; color:${QT_COLORS.textSub}; margin-bottom:12px;">共 ${letters.length} 封</div>`;
+
+    for (const letter of letters) {
+      const isDialog = letter.branch === 'dialog';
+      const deepenedTag = letter.deepened ? `<span style="color:${QT_COLORS.gold}; font-size:10px; margin-left:6px;">已深入</span>` : '';
+      html += `<div style="background:${QT_COLORS.bgSurface}; border-radius:10px; padding:14px; margin-bottom:12px; border:1px solid ${QT_COLORS.border};">`;
+      html += `<div style="font-size:13px; font-weight:700; color:${QT_COLORS.silverBright}; margin-bottom:4px;">${qtEscape(letter.charName)}${deepenedTag}</div>`;
+      html += `<div style="font-size:11px; color:${QT_COLORS.textSub}; margin-bottom:8px;">${isDialog ? '对话消息' : '信件'} · ${new Date(letter.createdAt).toLocaleString()}</div>`;
+      if (isDialog) {
+        // 对话：解析 JSON 数组逐条展示
+        let msgs = [];
+        try { msgs = JSON.parse(letter.content || '[]'); } catch (e) {}
+        if (!Array.isArray(msgs)) msgs = [];
+        for (const msg of msgs) {
+          html += `<div style="background:${QT_COLORS.bgMid}; padding:8px 12px; border-radius:6px; margin-bottom:6px; font-size:13px; color:${QT_COLORS.textMain}; line-height:1.6;">${qtEscape(String(msg))}</div>`;
+        }
+      } else {
+        // 信件：保留换行
+        html += `<div style="font-size:13px; color:${QT_COLORS.textMain}; line-height:2; white-space:pre-wrap;">${qtEscape(letter.content || '')}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += '</div>';
+    overlay.innerHTML = html;
+    overlay.classList.add('active');
+    document.getElementById('qt-letters-back').onclick = () => qtOpenCompletedGameDetail(game);
   }
 
   // ============================================================
@@ -2158,7 +2282,7 @@
     // 从档案库导入角色
     document.getElementById('qt-wv-import-chars').onclick = async () => {
       let archives = [];
-      try { archives = await db.archives.where('type').anyOf(['character', 'npc']).toArray(); } catch (e) {}
+      try { archives = (await db.archives.where('type').anyOf(['character', 'npc']).toArray()).filter(a => !a.isSnapshot); } catch (e) {}
       if (archives.length === 0) { qtToast('档案库中暂无角色'); return; }
       const charsTextarea = document.getElementById('qt-wv-chars');
       let existing = [];
@@ -2275,7 +2399,7 @@
 
   // AI 生成世界观
   async function qtGenerateWorldview(prompt) {
-    const aiPrompt = `你是一个世界观生成器。请根据以下要求生成一个完整的虚构世界观，用于长文文字游戏（快穿）。
+    const aiPrompt = `你是一位网络小说世界观架构师。请根据以下要求生成一个完整的虚构世界观，用于快穿题材的互动小说。
 
 要求：${prompt}
 
@@ -2283,16 +2407,16 @@
 1. title: 世界观标题（简洁有力）
 2. synopsis: 原文剧情梗概（100-200字，概括这个世界的主要剧情线索）
 3. worldBackground: 世界背景设定（200-400字，包括时代、地理、社会结构、特殊规则等）
-4. characters: 主要人物列表（3-6个角色，每个含 name 姓名、identity 身份描述、avatar 留空）
+4. characters: 主要人物列表（3-6个角色，每个含 name 姓名、identity 身份描述、avatar 留空）。【人物锚点要求】每个角色的 identity 必须点明一个鲜明的性格锚点（核心特质，如莽撞、隐忍、毒舌、天真、世故、偏执等）外加身份。绝不能把所有角色都写成城府深沉、勾心斗角的阴谋家——要安排憨直、冲动、单纯等不同类型的人，让人物群像有层次
 5. relationships: 人物关系网（文字描述各角色间的关系，如亲属/敌对/暗恋/合作等）
-6. openings: 游戏开场白（1-2个，每个约700字，以第二人称"你"叙述，描写玩家穿越后醒来的第一个场景，包含环境描写、感官细节、悬念引入，让玩家有代入感。不要替玩家做决定或说话。可为空数组表示由 AI 自动生成）
+6. openings: 游戏开场白（1-2个，每个约700字，以第二人称"你"叙述）。【网文质感】像好看的网络小说开头，画面感强、有代入感：多用动作、神态、对话和感官细节描写玩家穿越后醒来的第一个场景，适度刻画人物心理。不要写成说明书或剧情大纲，不要动不动就埋伏笔卖关子。不要替玩家做决定或说话。可为空数组表示由 AI 自动生成）
 
 严格按以下 JSON 格式输出，禁止输出任何额外文字或 Markdown 代码块标记：
 {
   "title": "标题",
   "synopsis": "剧情梗概",
   "worldBackground": "世界背景",
-  "characters": [{"name":"姓名","identity":"身份描述","avatar":""}],
+  "characters": [{"name":"姓名","identity":"身份描述+性格锚点","avatar":""}],
   "relationships": "关系网描述",
   "openings": ["开场白文本1","开场白文本2"]
 }`;
@@ -2393,9 +2517,10 @@
     const identity = await db.qt_identity.toCollection().first();
     if (!identity) { qtToast('请先设定身份'); return; }
 
-    // 弹出挂载对话框：选择美化套件 + 挂载世界书
+    // 弹出挂载对话框：选择美化套件 + 文风特调 + 挂载世界书
     const overlay = document.getElementById('qt-overlay');
     const beautifies = await db.qt_beautify.toArray();
+    const styles = await qtEnsureBuiltinStyles();
     let wbs = [];
     try { wbs = await db.world_book_entries.toArray(); } catch (e) {}
 
@@ -2422,6 +2547,24 @@
     }
     html += '</div>';
 
+    // 文风特调选择（高优先级注入，可切换不同文风）
+    html += `<div class="qt-section-title">${QT_ICONS.style}文风特调（可选）</div>`;
+    html += '<div id="qt-mount-style" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">';
+    html += `<div class="qt-mount-option selected" data-st-id="" style="cursor:pointer;">
+      <span class="qt-mount-radio selected"></span>
+      <div><div style="font-size:12px; font-weight:600; color:${QT_COLORS.silver};">不使用文风</div>
+      <div style="font-size:10px; color:${QT_COLORS.textSub};">使用默认网文风格</div></div>
+    </div>`;
+    for (const st of styles) {
+      const builtinTag = st.builtin ? ' · 内置' : '';
+      html += `<div class="qt-mount-option" data-st-id="${st.id}" style="cursor:pointer;">
+        <span class="qt-mount-radio"></span>
+        <div><div style="font-size:12px; font-weight:600; color:${QT_COLORS.silver};">${qtEscape(st.name || '未命名文风')}${builtinTag}</div>
+        <div style="font-size:10px; color:${QT_COLORS.textSub};">${qtEscape((st.promptHint || '').replace(/\n/g, ' ').slice(0, 40))}${(st.promptHint || '').length > 40 ? '…' : ''}</div></div>
+      </div>`;
+    }
+    html += '</div>';
+
     // 世界书挂载（手风琴式多选）
     html += `<div class="qt-section-title">${QT_ICONS.book}挂载世界书（可选）</div>`;
     html += '<div id="qt-mount-wb-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;"></div>';
@@ -2438,6 +2581,21 @@
         selectedBtId = opt.getAttribute('data-bt-id') || null;
         if (selectedBtId === '') selectedBtId = null;
         overlay.querySelectorAll('#qt-mount-beautify .qt-mount-option').forEach(o => {
+          o.classList.remove('selected');
+          o.querySelector('.qt-mount-radio').classList.remove('selected');
+        });
+        opt.classList.add('selected');
+        opt.querySelector('.qt-mount-radio').classList.add('selected');
+      };
+    });
+
+    // 文风特调单选
+    let selectedStId = null;
+    overlay.querySelectorAll('#qt-mount-style .qt-mount-option').forEach(opt => {
+      opt.onclick = () => {
+        selectedStId = opt.getAttribute('data-st-id') || null;
+        if (selectedStId === '') selectedStId = null;
+        overlay.querySelectorAll('#qt-mount-style .qt-mount-option').forEach(o => {
           o.classList.remove('selected');
           o.querySelector('.qt-mount-radio').classList.remove('selected');
         });
@@ -2501,12 +2659,14 @@
     // 确认挂载并开始
     document.getElementById('qt-mount-confirm').onclick = async () => {
       const finalBtId = selectedBtId ? parseInt(selectedBtId) : null;
+      const finalStId = selectedStId ? parseInt(selectedStId) : null;
       const finalWbIds = Array.from(mountedWbIds);
       overlay.classList.remove('active');
       const gameId = await db.qt_games.add({
         worldviewId,
         identityId: identity.id,
         beautifyId: finalBtId,
+        styleId: finalStId,
         mountedWbIds: finalWbIds,
         status: 'active',
         currentRound: 0,
@@ -2516,6 +2676,7 @@
       qtCurrentGameId = gameId;
       const mountInfo = [];
       if (finalBtId) mountInfo.push('美化');
+      if (finalStId) mountInfo.push('文风');
       if (finalWbIds.length > 0) mountInfo.push(finalWbIds.length + ' 条世界书');
       qtToast('剧本已启动' + (mountInfo.length ? '（已挂载：' + mountInfo.join('、') + '）' : ''));
       qtSetView('game');
@@ -2985,6 +3146,14 @@
         beautifyHint = qtBuildBeautifyPromptHint(bt);
       } catch (e) {}
     }
+    // 加载挂载的文风特调（开场也要遵循文风，最高优先级）
+    let styleHint = '';
+    if (game.styleId) {
+      try {
+        const st = await db.qt_styles.get(game.styleId);
+        styleHint = qtBuildStylePromptHint(st);
+      } catch (e) {}
+    }
 
     // 优先使用世界观预设的开场白（不再调用 AI）
     if (wv && Array.isArray(wv.openings) && wv.openings.length > 0) {
@@ -3014,7 +3183,7 @@
     // 最多重试 2 次（共 3 次请求），兼容 AI 偶发返回空内容
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const prompt = qtBuildOpeningPrompt(wv, identity, beautifyHint);
+        const prompt = qtBuildOpeningPrompt(wv, identity, beautifyHint, styleHint);
         const raw = await qtCallAI([{ role: 'user', content: prompt }], { temperature: attempt === 0 ? 0.9 : 0.7, max_tokens: 4096 });
         if (raw && raw.trim().length > 50) {
           content = raw;
@@ -3030,7 +3199,7 @@
 
     if (!content) {
       // 兜底开场：保证游戏能继续
-      const fallbackContent = qtBuildFallbackOpening(wv, identity, beautifyHint);
+      const fallbackContent = qtBuildFallbackOpening(wv, identity, beautifyHint, styleHint);
       const parsed = qtParseGameReply(fallbackContent);
       await db.qt_messages.add({
         gameId: game.id,
@@ -3062,7 +3231,7 @@
   }
 
   // 兜底开场（AI 不可用时保证游戏可玩）
-  function qtBuildFallbackOpening(wv, identity, beautifyHint) {
+  function qtBuildFallbackOpening(wv, identity, beautifyHint, styleHint) {
     const npcName = (Array.isArray(wv.characters) && wv.characters[0]) ? (wv.characters[0].name || '神秘人') : '神秘人';
     let body = `你缓缓睁开眼，陌生的天花板映入眼帘。这里是${wv.title || '某个世界'}。\n\n`;
     body += `${wv.worldBackground ? wv.worldBackground + '\n\n' : ''}`;
@@ -3112,12 +3281,12 @@
   }
 
   // 构建开场 prompt
-  function qtBuildOpeningPrompt(wv, identity, beautifyHint) {
+  function qtBuildOpeningPrompt(wv, identity, beautifyHint, styleHint) {
     const charsDesc = Array.isArray(wv.characters)
       ? wv.characters.map(c => '- ' + (c.name || '') + '：' + (c.identity || '')).join('\n')
       : (typeof wv.characters === 'string' ? wv.characters : '');
-    return `你是一个长文文字游戏（快穿）的叙事 AI。请根据以下世界观和玩家身份，生成游戏的开场。
-
+    return `你是一位网络小说作家，正在创作一部快穿题材的互动小说。请根据以下世界观和玩家身份，撰写游戏的开场章节。
+${styleHint || ''}
 【世界观】${wv.title}
 【剧情梗概】${wv.synopsis || ''}
 【世界背景】${wv.worldBackground || ''}
@@ -3132,15 +3301,17 @@ ${charsDesc}
 背景：${identity.background || '未知'}
 ${beautifyHint}
 
-请生成开场剧情，要求：
+请生成开场剧情，写作要求：
 1. 【字数硬性要求】正文字数必须在 900-1200 字之间，不得偷工减料，请充分展开场景、动作、对话、心理与环境细节
-2. 小说质感，有画面感和氛围
-3. 描述玩家"穿越"进入这个世界的初始场景
-4. 引入 1-2 个 NPC 与玩家互动，体现其性格
-5. 严格遵守世界观设定，不编造与世界背景冲突的内容
-6. 【最重要】不能替玩家行动、说话或做决定，只描述环境、NPC 反应和可选的情境
-7. NPC 的言行必须符合其人设，不能所有 NPC 都温柔，要各有口吻
-8. 不要让单个 NPC 一直占上风，也不要所有 NPC 一次性全部登场
+2. 【网文质感】像好看的网络小说一样，节奏明快、画面感强、有戏剧张力，让人想读下去，不要写成干巴巴的剧情大纲或说明书
+3. 【动作与语言描写】多用具体的动作、神态、对话来推动场面，少用大段抽象叙述。让人物"动"起来——皱眉、转身、冷笑、攥紧衣角，而不是只交代"他很生气"
+4. 【人物心理】适度刻画关键人物的内心活动与情绪波动，让角色有血有肉，但不要冗长独白
+5. 【人物锚点】每个出场的 NPC 都要有鲜明的性格锚点（一个核心特质，如莽撞、隐忍、毒舌、天真、世故等），言行围绕锚点展开。绝不能把所有角色都写成城府深沉、勾心斗角的阴谋家——世界要有憨直的人、冲动的人、单纯的人
+6. 描述玩家"穿越"进入这个世界的初始场景，引入 1-2 个 NPC 与玩家互动，体现其性格差异
+7. 严格遵守世界观设定，不编造与世界背景冲突的内容
+8. 【最重要】不能替玩家（${identity.name}）行动、说话或做决定，只描述环境、NPC 反应和可选的情境
+9. 【克制伏笔】不要动不动就埋伏笔、留悬念、卖关子。把眼前的场景写扎实写生动，比堆砌"似乎另有隐情"更重要
+10. 不要让单个 NPC 一直占上风，也不要所有 NPC 一次性全部登场
 
 在正文（含状态栏标记）全部结束后，最后另起一行输出 3 个推荐行动选项，格式如下（必须严格遵循，不可省略）：
 [ACTIONS]
@@ -3203,12 +3374,21 @@ ${beautifyHint}
       } catch (e) {}
     }
 
+    // 加载挂载的文风特调（最高优先级，注入到 prompt 最前面，让 AI 优先遵循）
+    let styleHint = '';
+    if (game.styleId) {
+      try {
+        const st = await db.qt_styles.get(game.styleId);
+        styleHint = qtBuildStylePromptHint(st);
+      } catch (e) {}
+    }
+
     const charsDesc = Array.isArray(wv.characters)
       ? wv.characters.map(c => '- ' + (c.name || '') + '：' + (c.identity || '')).join('\n')
       : (typeof wv.characters === 'string' ? wv.characters : '');
 
-    return `你是一个长文文字游戏（快穿）的叙事 AI。请根据以下信息推进剧情。
-
+    return `你是一位网络小说作家，正在创作一部快穿题材的互动小说。请根据以下信息推进剧情。
+${styleHint}
 【世界观】${wv.title}
 【世界背景】${wv.worldBackground || ''}
 【主要人物】
@@ -3235,15 +3415,19 @@ ${beautifyHint}
 
 【玩家本轮行动】${userInput}
 
-请推进剧情，要求：
+请推进剧情，写作要求：
 1. 【字数硬性要求】正文字数必须在 900-1200 字之间，不得偷工减料、不得提前收尾、不得用省略号或概括代替具体描写。请充分展开场景、动作、对话、心理与环境细节。
-2. 小说质感，有画面感、氛围感和情绪张力
-3. 严格遵守世界观设定和人物关系，不编造冲突内容
-4. NPC 的言行必须严格符合其人设和性格，各有口吻，不能所有 NPC 都温柔或都冷酷
-5. 【最重要】绝对不能替玩家（${identity.name}）行动、说话、思考或做决定，只描述环境变化、NPC 反应和剧情推进
-6. 不要让单个 NPC 一直占上风，也不要所有 NPC 一次性全部登场摆出来，要有节奏
-7. 要有剧情发展，不能原地踏步，每轮都要推进故事
-8. 如有多人在场，让对话自然交替，体现不同立场
+2. 【网文质感】像好看的网络小说一样，节奏明快、画面感强、有戏剧张力，让人想读下去，不要写成干巴巴的剧情大纲或说明书
+3. 【动作与语言描写】多用具体的动作、神态、对话来推动场面，少用大段抽象叙述。让人物"动"起来——皱眉、转身、冷笑、攥紧衣角，而不是只交代"他很生气"
+4. 【人物心理】适度刻画关键人物的内心活动与情绪波动，让角色有血有肉，但不要冗长独白
+5. 【人物锚点】每个出场的 NPC 都要有鲜明的性格锚点（一个核心特质，如莽撞、隐忍、毒舌、天真、世故等），言行围绕锚点展开。绝不能把所有角色都写成城府深沉、勾心斗角的阴谋家——世界要有憨直的人、冲动的人、单纯的人
+6. 严格遵守世界观设定和人物关系，不编造冲突内容
+7. NPC 的言行必须严格符合其人设和性格，各有口吻，不能所有 NPC 都温柔或都冷酷
+8. 【最重要】绝对不能替玩家（${identity.name}）行动、说话、思考或做决定，只描述环境变化、NPC 反应和剧情推进
+9. 【克制伏笔】不要动不动就埋伏笔、留悬念、卖关子。把眼前的场景写扎实写生动，比堆砌"似乎另有隐情"更重要。不要每段结尾都强行制造悬念
+10. 不要让单个 NPC 一直占上风，也不要所有 NPC 一次性全部登场摆出来，要有节奏
+11. 要有剧情发展，不能原地踏步，每轮都要推进故事
+12. 如有多人在场，让对话自然交替，体现不同立场
 
 在正文（含状态栏标记）全部结束后，最后另起一行输出 3 个推荐行动选项，格式如下（必须严格遵循，不可省略）：
 [ACTIONS]
@@ -3568,6 +3752,10 @@ ${beautifyHint}
       <span class="qt-tool-icon">${QT_ICONS.engine}</span><div><div style="font-size:13px; font-weight:700; color:${QT_COLORS.silverBright};">剧情引擎</div>
       <div style="font-size:11px; color:${QT_COLORS.textSub};">设定剧情发展方向</div></div>
     </div>`;
+    html += `<div class="qt-card qt-card-hover" id="qt-tool-style" style="cursor:pointer; display:flex; align-items:center; gap:12px;">
+      <span class="qt-tool-icon" style="color:${QT_COLORS.accent};">${QT_ICONS.style}</span><div><div style="font-size:13px; font-weight:700; color:${QT_COLORS.silverBright};">文风特调</div>
+      <div style="font-size:11px; color:${QT_COLORS.textSub};">建立/切换文风，高优先级注入</div></div>
+    </div>`;
     html += `<div class="qt-card qt-card-hover" id="qt-tool-finish" style="cursor:pointer; display:flex; align-items:center; gap:12px;">
       <span class="qt-tool-icon" style="color:${QT_COLORS.danger};">${QT_ICONS.finish}</span><div><div style="font-size:13px; font-weight:700; color:${QT_COLORS.silverBright};">完结剧本</div>
       <div style="font-size:11px; color:${QT_COLORS.textSub};">结束本次穿越，归档</div></div>
@@ -3587,12 +3775,18 @@ ${beautifyHint}
     document.getElementById('qt-tool-summary').onclick = () => { overlay.classList.remove('active'); qtOpenSummary(); };
     document.getElementById('qt-tool-var').onclick = () => { overlay.classList.remove('active'); qtOpenVariables(); };
     document.getElementById('qt-tool-engine').onclick = () => { overlay.classList.remove('active'); qtOpenEngine(); };
+    document.getElementById('qt-tool-style').onclick = () => { overlay.classList.remove('active'); qtOpenStyleManager(); };
     document.getElementById('qt-tool-finish').onclick = async () => {
       overlay.classList.remove('active');
       if (!confirm('确定完结此剧本？完结后将归档，无法继续游玩。')) return;
-      await db.qt_games.update(qtCurrentGameId, { status: 'finished' });
+      // 修复：统一使用 'completed' 状态（与已完结世界列表查询一致）
+      await db.qt_games.update(qtCurrentGameId, { status: 'completed', finishedAt: Date.now() });
       qtStopDanmaku();
       qtToast('剧本已完结，归档成功');
+      // 第四面墙：触发故人来信全屏动画
+      if (typeof window.qtFanwallTrigger === 'function') {
+        try { await window.qtFanwallTrigger(qtCurrentGameId); } catch (e) { console.error('第四面墙触发失败:', e); }
+      }
       qtSetView('current');
     };
   }
@@ -4171,6 +4365,219 @@ ${dialogText}`;
   }
 
   // ============================================================
+  // 11b. 文风特调系统（多文风建立/切换/应用，最高优先级注入 AI 提示词）
+  // ============================================================
+  const QT_STYLE_BUILTIN_VERSION = 1;
+  // 内置文风定义（不写库的数据对象，由 qtEnsureBuiltinStyles 写库）
+  function qtBuildBuiltinStylesData() {
+    return [
+      {
+        name: '细腻抒情',
+        builtin: 'lyrical',
+        version: QT_STYLE_BUILTIN_VERSION,
+        promptHint: `【文风特调·最高优先级（凌驾于所有写作要求之上，每轮必须严格遵循）】
+当前启用"细腻抒情"文风，请按以下要求写作：
+1. 用词典雅考究，多用通感、比喻、留白，营造诗意氛围
+2. 重内心独白与情绪流转，让角色的喜悲都有层次感，避免直白宣泄
+3. 描写细腻入微：光影、气息、衣袂、指尖的微颤都要写到，让画面有温度
+4. 节奏舒缓而不拖沓，用氛围烘托情绪，而非堆砌事件
+5. 对话含蓄隽永，留有余味，少用直给的台词`
+      },
+      {
+        name: '爽文快节奏',
+        builtin: 'cool_fast',
+        version: QT_STYLE_BUILTIN_VERSION,
+        promptHint: `【文风特调·最高优先级（凌驾于所有写作要求之上，每轮必须严格遵循）】
+当前启用"爽文快节奏"文风，请按以下要求写作：
+1. 节奏明快，每轮都要有明确的情绪爆点或反转，让人读得停不下来
+2.多用短句、短段，信息密度高，绝不拖泥带水
+3. 善用"打脸""逆袭""扮猪吃虎"等爽点，让主角始终占据主动或绝地反击
+4. 情绪外放，反应夸张有戏剧性（震惊、倒吸凉气、瞳孔地震等）
+5. 每轮结尾留一个钩子或悬念，勾住读者想看下一轮`
+      },
+      {
+        name: '影视镜头感',
+        builtin: 'cinematic',
+        version: QT_STYLE_BUILTIN_VERSION,
+        promptHint: `【文风特调·最高优先级（凌驾于所有写作要求之上，每轮必须严格遵循）】
+当前启用"影视镜头感"文风，请按以下要求写作：
+1. 像分镜脚本一样写作，每个段落都是一个清晰的镜头（特写/中景/远景/俯拍等）
+2. 用画面和动作交代信息，少用旁白式心理叙述，show don't tell
+3. 善用景别切换与运动镜头：从环境全景推进到人物特写，或跟随角色的视线移动
+4. 注意光影、色调、声音的环境描写，营造沉浸的视听感
+5. 关键时刻用慢镜头或停顿强调，转场干脆利落`
+      }
+    ];
+  }
+
+  // 确保内置文风存在（首次进入自动播种），返回全部文风列表
+  async function qtEnsureBuiltinStyles() {
+    let all = await db.qt_styles.toArray();
+    const builtins = qtBuildBuiltinStylesData();
+    let needReload = false;
+    for (const def of builtins) {
+      const existing = all.find(s => s.builtin === def.builtin);
+      if (!existing) {
+        await db.qt_styles.add(Object.assign({}, def, { createdAt: Date.now() }));
+        needReload = true;
+      } else if (!existing.version || existing.version < QT_STYLE_BUILTIN_VERSION) {
+        // 内置文风版本升级：更新 promptHint，保留用户可能改过的 name
+        await db.qt_styles.update(existing.id, { promptHint: def.promptHint, version: QT_STYLE_BUILTIN_VERSION });
+        needReload = true;
+      }
+    }
+    if (needReload) all = await db.qt_styles.toArray();
+    return all;
+  }
+
+  // 构建文风提示词（高优先级包装），注入到 prompt 最前面
+  function qtBuildStylePromptHint(style) {
+    if (!style || !style.promptHint) return '';
+    return '\n' + style.promptHint + '\n';
+  }
+
+  // 文风管理面板（建立/切换/编辑/删除，并应用到当前剧本）
+  async function qtOpenStyleManager() {
+    await qtEnsureBuiltinStyles();
+    const overlay = document.getElementById('qt-overlay');
+    const styles = await db.qt_styles.toArray();
+    const builtinStyles = styles.filter(s => s.builtin);
+    const userStyles = styles.filter(s => !s.builtin);
+
+    // 当前剧本已挂载的文风
+    let currentStyleId = null;
+    let inGame = false;
+    if (qtCurrentGameId) {
+      try {
+        const game = await db.qt_games.get(qtCurrentGameId);
+        if (game && game.status === 'active') { inGame = true; currentStyleId = game.styleId || null; }
+      } catch (e) {}
+    }
+
+    let html = '<div class="qt-overlay-card" style="max-width:460px;">';
+    html += '<button class="qt-overlay-close" onclick="document.getElementById(\'qt-overlay\').classList.remove(\'active\')">' + QT_ICONS.close + '</button>';
+    html += '<div class="qt-overlay-title">' + QT_ICONS.style + ' 文风特调</div>';
+    html += `<div style="font-size:11px; color:${QT_COLORS.textSub}; margin-bottom:10px; line-height:1.6;">
+      建立多种文风，在不同游戏里选择应用。<b style="color:${QT_COLORS.accent};">文风以最高优先级注入</b>，AI 会优先遵循这种文风进行创作。${inGame ? '<br>当前剧本可直接切换文风，下一轮立即生效。' : '<br>开始游戏时可在挂载资源里选择文风。'}</div>`;
+
+    // 内置文风
+    html += `<div class="qt-section-title">内置文风</div>`;
+    for (const st of builtinStyles) {
+      const applied = inGame && currentStyleId === st.id;
+      html += `<div class="qt-card qt-card-hover" data-st-id="${st.id}" style="cursor:pointer; position:relative;${applied ? ' border-color:' + QT_COLORS.accent + '; box-shadow:0 0 0 1px ' + QT_COLORS.accent + ';' : ''}">
+        ${applied ? '<span style="position:absolute; top:8px; right:10px; font-size:9px; color:#fff; background:' + QT_COLORS.accent + '; padding:2px 6px; border-radius:4px;">已应用</span>' : '<span style="position:absolute; top:8px; right:10px; font-size:9px; color:#fff; background:' + QT_COLORS.textDim + '; padding:2px 6px; border-radius:4px;">内置</span>'}
+        <div class="qt-wv-title">${QT_ICONS.style} ${qtEscape(st.name || '未命名文风')}</div>
+        <div style="font-size:11px; color:${QT_COLORS.textSub}; margin-top:4px; max-height:40px; overflow:hidden;">${qtEscape((st.promptHint || '').replace(/^【[^】]*】/, '').replace(/\n/g, ' ').slice(0, 60))}…</div>
+        <div class="qt-wv-actions">
+          ${inGame ? `<button class="qt-btn ${applied ? '' : 'qt-btn-primary'}" data-action="apply" data-st-id="${st.id}">${applied ? '已应用' : '应用到当前剧本'}</button>` : ''}
+          <button class="qt-btn" data-action="edit" data-st-id="${st.id}">${QT_ICONS.edit}查看/编辑</button>
+        </div>
+      </div>`;
+    }
+
+    // 用户自建文风
+    html += `<div class="qt-section-title" style="margin-top:14px;">自建文风<button class="qt-btn qt-btn-primary" id="qt-st-new" style="float:right; margin-top:-4px;">${QT_ICONS.plus}新建文风</button></div>`;
+    if (userStyles.length === 0) {
+      html += `<div class="qt-card" style="text-align:center; padding:18px; color:${QT_COLORS.textSub}; font-size:12px;">还没有自建文风，点击右上角新建</div>`;
+    } else {
+      for (const st of userStyles) {
+        const applied = inGame && currentStyleId === st.id;
+        html += `<div class="qt-card qt-card-hover" data-st-id="${st.id}" style="cursor:pointer; margin-top:10px; position:relative;${applied ? ' border-color:' + QT_COLORS.accent + '; box-shadow:0 0 0 1px ' + QT_COLORS.accent + ';' : ''}">
+          ${applied ? '<span style="position:absolute; top:8px; right:10px; font-size:9px; color:#fff; background:' + QT_COLORS.accent + '; padding:2px 6px; border-radius:4px;">已应用</span>' : ''}
+          <div class="qt-wv-title">${qtEscape(st.name || '未命名文风')}</div>
+          <div style="font-size:11px; color:${QT_COLORS.textSub}; margin-top:4px; max-height:40px; overflow:hidden;">${qtEscape((st.promptHint || '').replace(/^【[^】]*】/, '').replace(/\n/g, ' ').slice(0, 60))}…</div>
+          <div class="qt-wv-actions">
+            ${inGame ? `<button class="qt-btn ${applied ? '' : 'qt-btn-primary'}" data-action="apply" data-st-id="${st.id}">${applied ? '已应用' : '应用到当前剧本'}</button>` : ''}
+            <button class="qt-btn" data-action="edit" data-st-id="${st.id}">${QT_ICONS.edit}编辑</button>
+            <button class="qt-btn qt-btn-danger" data-action="delete" data-st-id="${st.id}">${QT_ICONS.trash}</button>
+          </div>
+        </div>`;
+      }
+    }
+    html += '</div>';
+    overlay.innerHTML = html;
+    overlay.classList.add('active');
+
+    // 新建
+    const newBtn = document.getElementById('qt-st-new');
+    if (newBtn) newBtn.onclick = () => { overlay.classList.remove('active'); qtEditStyle(null); };
+
+    // 卡片操作
+    overlay.querySelectorAll('[data-action]').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const action = btn.getAttribute('data-action');
+        const id = parseInt(btn.getAttribute('data-st-id'));
+        if (action === 'edit') { overlay.classList.remove('active'); qtEditStyle(id); }
+        else if (action === 'delete') { overlay.classList.remove('active'); await qtDeleteStyle(id); }
+        else if (action === 'apply') {
+          if (!qtCurrentGameId) { qtToast('当前没有进行中的剧本'); return; }
+          await db.qt_games.update(qtCurrentGameId, { styleId: id });
+          qtToast('文风已切换，下一轮生效');
+          overlay.classList.remove('active');
+          qtOpenStyleManager();
+        }
+      };
+    });
+  }
+
+  // 新建/编辑文风
+  async function qtEditStyle(id) {
+    let st = null;
+    if (id != null) { try { st = await db.qt_styles.get(id); } catch (e) {} }
+    const overlay = document.getElementById('qt-overlay');
+    let html = '<div class="qt-overlay-card" style="max-width:480px;">';
+    html += '<button class="qt-overlay-close" onclick="document.getElementById(\'qt-overlay\').classList.remove(\'active\')">' + QT_ICONS.close + '</button>';
+    html += '<div class="qt-overlay-title">' + (st ? '编辑文风' : '新建文风') + '</div>';
+    html += `<div style="font-size:11px; color:${QT_COLORS.textSub}; margin-bottom:10px; line-height:1.6;">
+      文风提示词会以<b style="color:${QT_COLORS.accent};">最高优先级</b>注入到 AI 的提示词最前面，凌驾于其他写作要求之上。<br>
+      请描述你想要的文风特征（用词风格、叙事节奏、情感表达、结构手法等），越具体 AI 越能精准遵循。</div>`;
+    html += `<div class="qt-form-group"><label class="qt-form-label">文风名称</label><input class="qt-form-input" id="qt-st-name" value="${st ? qtEscape(st.name) : ''}" placeholder="如：古风白描"></div>`;
+    html += `<div class="qt-form-group"><label class="qt-form-label">文风提示词（注入 AI 提示词，最高优先级）</label><textarea class="qt-form-input" id="qt-st-hint" rows="10" placeholder="描述你想要的文风，例如：&#10;1. 用词典雅古朴，多用四字短语与文言句式&#10;2. 叙事白描为主，不加修饰的工笔刻画&#10;3. 情感克制内敛，哀而不伤">${st ? qtEscape(st.promptHint || '') : ''}</textarea></div>`;
+    html += `<div style="font-size:10px; color:${QT_COLORS.textDim}; margin-bottom:10px;">提示：不必自己写"最高优先级"字样，系统会自动包装。</div>`;
+    html += '<button class="qt-btn qt-btn-primary" id="qt-st-save" style="width:100%;">保存</button>';
+    html += '</div>';
+    overlay.innerHTML = html;
+    overlay.classList.add('active');
+
+    document.getElementById('qt-st-save').onclick = async () => {
+      const name = document.getElementById('qt-st-name').value.trim();
+      const rawHint = document.getElementById('qt-st-hint').value.trim();
+      if (!name) { qtToast('请输入文风名称'); return; }
+      if (!rawHint) { qtToast('请输入文风提示词'); return; }
+      // 自动包装为高优先级提示词
+      const promptHint = `【文风特调·最高优先级（凌驾于所有写作要求之上，每轮必须严格遵循）】\n当前启用"${name}"文风，请按以下要求写作：\n${rawHint}`;
+      const data = { name, promptHint };
+      if (st && st.builtin) data.builtin = st.builtin;
+      if (st) {
+        await db.qt_styles.update(st.id, data);
+      } else {
+        data.createdAt = Date.now();
+        await db.qt_styles.add(data);
+      }
+      overlay.classList.remove('active');
+      qtToast('文风已保存');
+      qtOpenStyleManager();
+    };
+  }
+
+  // 删除文风（内置不可删）
+  async function qtDeleteStyle(id) {
+    const st = await db.qt_styles.get(id);
+    if (!st) return;
+    if (st.builtin) { qtToast('内置文风不可删除'); return; }
+    if (!confirm('确定删除此文风？')) return;
+    await db.qt_styles.delete(id);
+    // 若有剧本正使用此文风，清空引用（styleId 非索引字段，用 toArray + filter）
+    try {
+      const games = await db.qt_games.toArray();
+      for (const g of games) if (g.styleId === id) await db.qt_games.update(g.id, { styleId: null });
+    } catch (e) {}
+    qtToast('已删除');
+    qtOpenStyleManager();
+  }
+
+  // ============================================================
   // 12. 系统球球（可拖动小AI，颜文字+工具栏+求助+双击反应）
   // ============================================================
   // 颜文字库（短颜文字，避免换行；按情绪分组）
@@ -4556,5 +4963,16 @@ ${dialogText}`;
   // 13. 公开接口
   // ============================================================
   window.qtSetViewPublic = qtSetView;
+  // 第四面墙模块所需的最小内部接口（只读访问，不污染内部状态）
+  window.qtInternals = {
+    qtCallAI: qtCallAI,
+    qtGetApi: qtGetApi,
+    qtParseJSON: qtParseJSON,
+    qtCleanTagsForContext: qtCleanTagsForContext,
+    qtRenderAiContent: qtRenderAiContent,
+    qtNormalizeTags: typeof qtNormalizeTags === 'function' ? qtNormalizeTags : function(t){return t;},
+    qtEscape: qtEscape,
+    QT_COLORS: QT_COLORS
+  };
 
 })();

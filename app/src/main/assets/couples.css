@@ -743,24 +743,29 @@
   color: #64748b;
 }
 
-/* 4. 悄悄话对话 */
+/* 4. 悄悄话对话（v1.5.17 重做：一期一条时间线，注意力更集中） */
 .couples-whisper-chat-flow {
   flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 14px 12px 18px;
   box-sizing: border-box;
 }
 
 .couples-whisper-card {
   padding: 10px 14px;
   font-size: 12.5px;
-  line-height: 1.45;
-  max-width: 80%;
-  box-shadow: 0 1.5px 4px rgba(0,0,0,0.02);
+  line-height: 1.5;
+  max-width: 78%;
+  box-shadow: 0 1.5px 6px rgba(15, 23, 42, 0.05);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
+
+/* 同一方连发的气泡靠近一点，视觉上归成一组 */
+.couples-whisper-card.tight { margin-top: -6px; }
 
 .couples-whisper-card.char {
   background-color: #ffffff;
@@ -776,6 +781,189 @@
   border-radius: 16px 16px 4px 16px;
   align-self: flex-end;
 }
+
+/* 打字中：呼吸感提示，不抢注意力 */
+.couples-whisper-card.is-typing {
+  background-color: rgba(255, 255, 255, 0.72);
+  color: #9a8f96;
+  font-size: 11.5px;
+  border-style: dashed;
+  animation: whisperBreath 1.6s ease-in-out infinite;
+}
+@keyframes whisperBreath {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* 时间分隔：极淡，只用来给注意力分段 */
+.couples-whisper-timesep {
+  align-self: center;
+  font-size: 10px;
+  color: #b6aab1;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 2px 10px;
+  border-radius: 9px;
+  margin: 4px 0;
+  user-select: none;
+}
+
+/* 空白一期的邀请态：一句话 + 一个暗示，不堆文案 */
+.couples-whisper-empty {
+  margin: auto;
+  text-align: center;
+  padding: 0 22px;
+  user-select: none;
+}
+.couples-whisper-empty .cwe-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #6b5560;
+  letter-spacing: 0.02em;
+}
+.couples-whisper-empty .cwe-sub {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #a99aa2;
+}
+
+/* 顶部「这一期」细条：清爽一行，不再是刺眼的红色告示 */
+.couples-whisper-session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #8a737f;
+  background: rgba(255, 245, 248, 0.86);
+  border-bottom: 1px solid rgba(255, 179, 193, 0.35);
+  backdrop-filter: blur(6px);
+}
+.couples-whisper-session-bar #couples-whisper-topic-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.couples-whisper-session-bar button {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: #e0798f;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.couples-whisper-session-bar button:active { transform: scale(0.94); }
+
+/* 往期入口 + 归档条目 */
+.couples-whisper-archive-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.72);
+  color: #9a8590;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.couples-whisper-archive-btn:active { transform: scale(0.95); }
+
+.couples-whisper-archive-item {
+  background: #fbf7f9;
+  border: 1px solid #f3e3e9;
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: left;
+}
+.couples-whisper-archive-item .cwai-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.couples-whisper-archive-item .cwai-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #4b3a42;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.couples-whisper-archive-item .cwai-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #a99aa2;
+}
+.couples-whisper-archive-item .cwai-meta {
+  font-size: 10px;
+  color: #b09aa4;
+  margin: 3px 0 6px;
+}
+.couples-whisper-archive-item .cwai-summary {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #5c4a53;
+  background: #fff;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-left: 3px solid #f0c3d1;
+}
+
+/* 话题库 / 设置面板里的胶囊与分组 */
+.couples-whisper-opt {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e8dbe1;
+  background: #fff;
+  color: #5c4a53;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.couples-whisper-opt.active {
+  border-color: #f0a9bd;
+  background: #fff5f8;
+  color: #d2708d;
+}
+.couples-whisper-opt:active { transform: scale(0.985); }
+
+.couples-whisper-topic-group { display: flex; flex-direction: column; gap: 6px; }
+.couples-whisper-topic-group .cwtg-name {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #b09aa4;
+  letter-spacing: 0.04em;
+}
+.couples-whisper-topic-group .cwtg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.couples-whisper-chip {
+  border: 1px solid #f0dde4;
+  background: #fffafc;
+  color: #6b5560;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  line-height: 1.4;
+}
+.couples-whisper-chip:active { transform: scale(0.96); background: #fff0f5; }
 
 /* 5. 愿望清单：自研呼吸感便利贴卡片 */
 .couples-wish-list-box {
@@ -936,6 +1124,31 @@
   box-shadow: 0 16px 40px rgba(0,0,0,0.1);
   box-sizing: border-box;
   padding: 20px;
+  position: relative;
+}
+
+/* 右上角统一关闭按钮：只要弹窗存在，就一定关得掉 */
+.couples-dialog-x {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.14);
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  z-index: 2;
+  transition: background-color 0.18s, color 0.18s;
+}
+.couples-dialog-x:hover { background: rgba(148, 163, 184, 0.24); color: #64748b; }
+.couples-dialog-x:active { transform: scale(0.9); }
+.couples-dialog-title { padding-right: 26px; }
   text-align: center;
   transform: scale(0.92);
   transition: transform 0.2s cubic-bezier(0.1, 0.76, 0.55, 0.94);

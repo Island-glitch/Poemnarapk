@@ -118,27 +118,31 @@
   box-sizing: border-box !important;
 }
 
-/* 发送和获取回复 SVG 按钮 */
+/* 发送和获取回复 SVG 按钮：无底色，只留图标（保留 38×38 点击热区）
+   图标颜色与左侧「加号」按钮（.btn-icon 的 --text-secondary）保持一致，不再用蓝/绿色块 */
 .chat-send-btn {
   width: 38px; height: 38px;
   border-radius: 50%; border: none;
-  background-color: #07c160; 
-  color: white;
+  background: transparent;
+  color: var(--text-secondary);
   display: flex; align-items: center; justify-content: center;
-  cursor: pointer; transition: background-color 0.2s, transform 0.1s;
+  cursor: pointer; transition: color 0.2s, opacity 0.2s, transform 0.1s;
   flex-shrink: 0;
 }
 .chat-send-btn:active {
   transform: scale(0.92);
 }
 .chat-send-btn svg {
-  width: 18px; height: 18px;
+  width: 22px; height: 22px;
 }
 .chat-send-btn.reply {
-  background-color: var(--primary); 
+  color: var(--text-secondary);
 }
-.chat-send-btn:hover { background-color: #059652; }
-.chat-send-btn.reply:hover { background-color: #1565c0; }
+/* hover 不再改底色，只做轻微透明度变化 */
+.chat-send-btn:hover { background: transparent; opacity: 0.7; }
+.chat-send-btn:active { opacity: 1; }
+.chat-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.chat-send-btn:disabled:active { transform: none; }
 
 /* 拓展功能面板 */
 .expand-panel {
@@ -383,7 +387,72 @@
   line-height: 1.6;
   color: #1e293b;
   word-break: break-all;
-  white-space: pre-wrap; 
+  white-space: pre-wrap;
+}
+
+/* === 线下美化正则：预设状态栏 (好感度/兴奋值/心声) === */
+.chat-offline-status-bar {
+  margin: 10px 0 4px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #ffffff, #eef1f6);
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+.chat-offline-status-npc {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #cbd5e1;
+  letter-spacing: 1px;
+}
+.chat-offline-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.chat-offline-status-label {
+  width: 48px;
+  flex-shrink: 0;
+  color: #64748b;
+  font-weight: 600;
+}
+.chat-offline-status-meter {
+  flex: 1;
+  height: 8px;
+  background: #dfe4ec;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(100, 116, 139, 0.2);
+}
+.chat-offline-status-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.chat-offline-status-fill-excited {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+.chat-offline-status-val {
+  width: 32px;
+  text-align: right;
+  color: #475569;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.chat-offline-status-thought {
+  align-items: flex-start;
+}
+.chat-offline-status-thought-text {
+  flex: 1;
+  color: #64748b;
+  font-style: italic;
+  line-height: 1.5;
 }
 
 /* 多选状态调整 */

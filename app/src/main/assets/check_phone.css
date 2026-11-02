@@ -877,3 +877,626 @@
   font-size: 11px;
   color: #94a3b8;
 }
+
+/* ==========================================================================
+   13. 遥控器危险概率条与删除按钮 (Remote Risk & Delete)
+   ========================================================================== */
+.remote-risk-bar {
+  margin: 12px 16px 0 16px;
+  padding: 12px 14px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  box-sizing: border-box;
+}
+.remote-del-btn {
+  background: #fee2e2;
+  border: none;
+  color: #ef4444;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.remote-del-btn:hover {
+  background: #fecaca;
+}
+
+/* ==========================================================================
+   14. 日记列表摘要与字数 (Diary Excerpt & Word Count)
+   ========================================================================== */
+.diary-excerpt {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.diary-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(0,0,0,0.04);
+}
+.diary-word-count {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 700;
+}
+.diary-read-more {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 700;
+}
+.diary-detail-body {
+  word-break: break-word;
+}
+
+/* ==========================================================================
+   15. 音乐歌单卡片 (Music Playlist Cards)
+   ========================================================================== */
+.music-playlist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px 16px 16px;
+}
+.music-song-card {
+  background: #ffffff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+  border: 1px solid #f1f5f9;
+}
+.music-song-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.music-song-head:hover {
+  background: #f8fafc;
+}
+.music-song-head.expanded {
+  background: #f8fafc;
+}
+.music-play-icon {
+  color: #1e293b;
+  flex-shrink: 0;
+}
+.music-song-meta {
+  flex: 1;
+  min-width: 0;
+}
+.music-song-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.music-song-artist {
+  font-size: 10.5px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.music-chevron {
+  color: #cbd5e1;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.music-song-head.expanded .music-chevron {
+  transform: rotate(180deg);
+}
+.music-song-note {
+  padding: 0 14px 14px 14px;
+  border-top: 1px dashed #e2e8f0;
+  animation: musicNoteSlide 0.2s ease;
+}
+@keyframes musicNoteSlide {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.music-note-label {
+  font-size: 10px;
+  font-weight: 800;
+  color: #64748b;
+  margin: 10px 0 6px 0;
+  letter-spacing: 0.5px;
+}
+.music-note-text {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #334155;
+  text-align: justify;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ==========================================================================
+   16. 备忘录待办清单多格式渲染 (Notes Todo Formats)
+   ========================================================================== */
+.note-todo-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+.note-todo-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+  flex-shrink: 0;
+}
+.note-todo-date {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+}
+.note-todo-actions {
+  display: flex;
+  gap: 6px;
+}
+.note-todo-btn {
+  background: #f1f5f9;
+  border: none;
+  color: #475569;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.note-todo-btn:hover {
+  background: #e2e8f0;
+}
+.note-todo-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+}
+.note-todo-editor {
+  flex: 1;
+  width: 100%;
+  border: none;
+  resize: none;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #334155;
+  outline: none;
+  background: #ffffff;
+  padding: 14px 16px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.note-raw-pre {
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #475569;
+  line-height: 1.7;
+  margin: 0;
+}
+.todo-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px dashed rgba(0,0,0,0.03);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #334155;
+}
+.todo-line:last-child {
+  border-bottom: none;
+}
+.todo-box {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #94a3b8;
+  background: #f1f5f9;
+  margin-top: 1px;
+}
+.todo-done .todo-box {
+  background: #1e293b;
+  color: #ffffff;
+}
+.todo-text {
+  flex: 1;
+  word-break: break-word;
+}
+.todo-done .todo-text {
+  opacity: 0.6;
+}
+/* 多格式标记：红色 / 划掉 / 加粗 */
+.nf-red {
+  color: #ef4444;
+  font-weight: 700;
+}
+.nf-strike {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.todo-line strong {
+  font-weight: 800;
+  color: #1e293b;
+}
+
+/* ==========================================================================
+   17. 监控快照应用模块 (Monitor App)
+   ========================================================================== */
+.monitor-hero {
+  margin: 16px;
+  padding: 18px;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  border-radius: 16px;
+  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(30,41,59,0.18);
+}
+.monitor-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.monitor-hero-location {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.monitor-time {
+  font-size: 10px;
+  color: #94a3b8;
+  background: rgba(255,255,255,0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.monitor-activity {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+.monitor-mood-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+.monitor-block {
+  margin: 0 16px 12px 16px;
+  padding: 14px;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+}
+.monitor-block-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #64748b;
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+}
+.monitor-block-text {
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.6;
+}
+.monitor-thought {
+  border-left: 3px solid #a78bfa;
+}
+.monitor-thought-text {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #475569;
+  font-style: italic;
+  text-align: justify;
+}
+
+/* ==========================================================================
+   18. 浏览器检索结果卡片与评论 (Browser Result Cards)
+   ========================================================================== */
+.browser-result-card {
+  background: #ffffff;
+  padding: 12px 14px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  cursor: pointer;
+  border: 1px solid #f1f5f9;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.browser-result-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.05);
+}
+.browser-result-card .res-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #2563eb;
+  line-height: 1.4;
+}
+.browser-result-card .res-url {
+  font-size: 10px;
+  color: #059669;
+  margin: 3px 0;
+  font-family: monospace;
+}
+.browser-result-card .res-preview {
+  font-size: 11px;
+  color: #475569;
+  line-height: 1.5;
+}
+.browser-result-card .res-meta {
+  font-size: 9.5px;
+  color: #94a3b8;
+  margin-top: 6px;
+  font-weight: 700;
+}
+.browser-webpage-comments {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
+}
+.browser-comment-item {
+  background: #f8fafc;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   19. 文件管理应用模块 (File Manager App)
+   ========================================================================== */
+.files-overview {
+  padding: 16px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+}
+.files-overview-bar {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.files-overview-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  border-radius: 3px;
+}
+.files-overview-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+}
+.files-section-title {
+  padding: 12px 16px 6px 16px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.files-folder-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 16px 8px 16px;
+}
+.files-folder-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 4px;
+  background: #ffffff;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.files-folder-item:active {
+  background: #f1f5f9;
+}
+.files-folder-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+.files-folder-info {
+  text-align: center;
+}
+.files-folder-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+}
+.files-folder-count {
+  font-size: 9px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+.files-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 4px 16px;
+}
+.files-vault-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: 8px 16px;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  border-radius: 12px;
+  cursor: pointer;
+  color: #ffffff;
+  transition: transform 0.2s;
+}
+.files-vault-entry:active {
+  transform: scale(0.98);
+}
+.files-vault-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.files-vault-info {
+  flex: 1;
+}
+.files-vault-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+}
+.files-vault-count {
+  font-size: 10.5px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.files-vault-chevron {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* 私密保险箱视图 */
+.vault-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+  flex-shrink: 0;
+}
+.vault-head-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.vault-list {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+.vault-file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+  cursor: pointer;
+  background: #ffffff;
+}
+.vault-file-card:active {
+  background: #f8fafc;
+}
+.vault-file-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+.vault-file-info {
+  flex: 1;
+  min-width: 0;
+}
+.vault-file-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vault-file-type {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.vault-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+.vault-image-placeholder {
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+}
+.vault-image-desc {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.7;
+  margin-top: 12px;
+  text-align: justify;
+}
+.vault-video-placeholder {
+  background: #0f172a;
+  border-radius: 12px;
+  padding: 50px 20px;
+  text-align: center;
+  color: #64748b;
+}
+.vault-video-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.7;
+  margin-top: 12px;
+  text-align: justify;
+}
+.vault-doc-body {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #334155;
+  white-space: pre-wrap;
+  text-align: justify;
+  border: 1px solid #f1f5f9;
+}

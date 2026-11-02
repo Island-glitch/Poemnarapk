@@ -252,17 +252,100 @@
       }, duration);
     },
 
-    // 双击调起 App (基于当前活跃活跃桌宠绑定的角色) [1]
-    handleDoubleClick: async function() {
-      if (!this.activePetCharId) return;
-
-      if (typeof openWeChatDialog === 'function' && typeof activeSessionId !== 'undefined') {
-        const list = await db.sessions.where('charId').equals(this.activePetCharId).toArray();
-        if (list.length > 0) {
-          openWeChatDialog(list[0].id);
-        }
+    // 「思考中」常驻：请求可能要几十秒，旧实现只冒一次 3 秒的气泡，
+    // 等回复真的回来时用户早就看不到任何提示了，观感上就是「等了很久突然只闪一下」。
+    // 这里按 2.2 秒的节奏续着，回复落地的瞬间由 stopThinkingBubble 接管。
+    startThinkingBubble: function(text) {
+      this.stopThinkingBubble();
+      const show = () => this.popBubble(text || "思考中...", 2600);
+      show();
+      this._thinkingTimer = setInterval(show, 2200);
+    },
+    stopThinkingBubble: function() {
+      if (this._thinkingTimer) {
+        clearInterval(this._thinkingTimer);
+        this._thinkingTimer = null;
       }
+    },
 
+    // 回复气泡的停留时长：至少 6 秒，长句按字数延长（让用户来得及读完）
+    replyBubbleDuration: function(text) {
+      const len = String(text || '').length;
+      return Math.max(6000, Math.min(12000, len * 350));
+    },
+
+    // 解析桌宠对应的目标会话（会话级字段缺失时按“当前会话 → 当前面具 → 任意会话 → 自建”逐级兜底）
+    // 返回 { sess, created } 或 null；不再依赖“当前是否停在对话页”
+    resolvePetSession: async function(charId) {
+      const cid = Number(charId);
+      if (!cid) return null;
+      try {
+        let list = [];
+        try { list = (await db.sessions.where('charId').equals(cid).toArray()) || []; } catch (e) { list = []; }
+
+        // 1. 正在浏览的这个角色的会话优先
+        if (typeof activeSessionId !== 'undefined' && activeSessionId) {
+          const active = list.find(s => s && s.id === activeSessionId);
+          if (active) return { sess: active, created: false };
+        }
+
+        // 2. 当前面具（userId）下该角色的会话
+        const personaId = (typeof activeUserPersonaId !== 'undefined' && activeUserPersonaId !== null && activeUserPersonaId !== '')
+          ? Number(activeUserPersonaId)
+          : NaN;
+        if (!isNaN(personaId)) {
+          const mine = list.find(s => Number(s.userId) === personaId);
+          if (mine) return { sess: mine, created: false };
+          // 该角色还没有会话：按“新建单聊”的口径补建一个，保证双击永远有落点
+          try {
+            const char = await db.archives.get(cid);
+            const user = await db.archives.get(personaId);
+            const newSess = {
+              userId: personaId,
+              charId: cid,
+              customCharName: (char && char.name) || "",
+              customCharAvatar: (char && char.avatar) || null,
+              customCharPersona: (char && char.persona) || "",
+              customUserName: (user && user.name) || "我",
+              customUserAvatar: (user && user.avatar) || null,
+              customUserPersona: (user && user.persona) || "",
+              lastMessageTime: Date.now()
+            };
+            newSess.id = await db.sessions.add(newSess);
+            return { sess: newSess, created: true };
+          } catch (e) {
+            console.warn("桌宠自动补建会话失败:", e);
+          }
+        }
+
+        // 3. 兜底：该角色已有的任意会话
+        if (list.length > 0) return { sess: list[0], created: false };
+      } catch (e) {
+        console.error("解析桌宠目标会话失败:", e);
+      }
+      return null;
+    },
+
+    // 保证该角色会话存在，并把对话页切过去（用于“不在对话页双击也能进对话”）
+    openPetChat: async function() {
+      const resolved = await this.resolvePetSession(this.activePetCharId);
+      if (!resolved || !resolved.sess) return null;
+      const sess = resolved.sess;
+      if (typeof openWeChatDialog === 'function') {
+        try { await openWeChatDialog(sess.id); } catch (e) { console.error("桌宠打开对话页失败:", e); }
+      }
+      return sess;
+    },
+
+    // 双击调起 App (基于当前活跃活跃桌宠绑定的角色) [1]
+    // 关键修复：不再依赖 activeSessionId / 是否停在对话页，双击永远解析到该角色的会话并切过去
+    handleDoubleClick: async function() {
+      if (!this.activePetCharId || !this.activePetConfig) return;
+
+      // 1. 无条件解析并打开该角色的会话（不在对话页也能进对话）
+      try { await this.openPetChat(); } catch (e) { console.error("桌宠双击切会话失败:", e); }
+
+      // 2. 触发交互
       if (this.activePetConfig.mode === 'api') {
         await this.triggerApiInteraction();
       } else {
@@ -270,9 +353,9 @@
       }
     },
 
-    // 真机系统桌面双击后台静默触发
+    // 真机系统桌面双击后台静默触发（不强制切页面，但同样不依赖 activeSessionId）
     handleDoubleClickBackground: async function() {
-      if (!this.activePetCharId) return;
+      if (!this.activePetCharId || !this.activePetConfig) return;
 
       if (this.activePetConfig.mode === 'api') {
         await this.triggerApiInteraction();
@@ -343,7 +426,10 @@
 
     // 自定义对话触发 (作用于当前活跃活跃桌宠) [1]
     triggerCustomInteraction: function() {
-      if (!this.activePetConfig) return;
+      if (!this.activePetConfig) {
+        this.popBubble("(还没配置桌宠对话)");
+        return;
+      }
 
       const candidates = [];
       Object.keys(STATE_NAMES).forEach(st => {
@@ -389,7 +475,8 @@
 
     // 实时生成 API 交互 (作用于当前活跃活跃桌宠) [1]
     triggerApiInteraction: async function() {
-      this.popBubble("思考中...");
+      // 思考中气泡按节奏续着，避免「请求慢 → 提示早没了 → 回复只闪一下」
+      this.startThinkingBubble("思考中...");
 
       try {
         const presetId = localStorage.getItem("global_api_preset_id");
@@ -397,10 +484,18 @@
         const api = await db.api_presets.get(Number(presetId));
         if (!api) throw new Error("API预设丢失");
 
-        // 定位全局活跃桌宠关联会话
+        // 定位全局活跃桌宠关联会话（优先当前面具下的会话，避免多面具串台）
         const sessions = await db.sessions.where('charId').equals(this.activePetCharId).toArray();
         if (sessions.length === 0) throw new Error("未找到对应会话");
-        const sess = sessions[0];
+        const personaId = (typeof activeUserPersonaId !== 'undefined' && activeUserPersonaId !== null && activeUserPersonaId !== '')
+          ? Number(activeUserPersonaId)
+          : NaN;
+        let sess = null;
+        if (!isNaN(personaId)) sess = sessions.find(s => Number(s.userId) === personaId) || null;
+        if (!sess && typeof activeSessionId !== 'undefined' && activeSessionId) {
+          sess = sessions.find(s => s.id === activeSessionId) || null;
+        }
+        if (!sess) sess = sessions[0];
         const char = await db.archives.get(sess.charId);
 
         const prompt = `你现在是用户的桌面悬浮桌宠，扮演【${char.name}】。
@@ -408,20 +503,30 @@
 请以符合你自身性格、当前情绪和桌宠身份的口吻，简短地对用户说一句话（必须控制在20个字以内，严禁长篇大论）。
 同时你必须在回答的最后一行以 \`[PET_STATE]状态名\` 的格式返回你的新状态动作（状态名只能是以下之一：初始化, 开心, 难过, 生气, 犹豫, 洗漱, 吃饭, 睡觉, 看着你）。`;
 
-        const response = await fetch(`${api.url}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-          body: JSON.stringify({
-            model: api.model,
-            messages: [{ role: "system", content: prompt }, { role: "user", content: "双击了你" }],
-            temperature: 0.8
-          })
-        });
+        let apiContent;
+        const apiMessages = [{ role: "system", content: prompt }, { role: "user", content: "双击了你" }];
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            apiContent = await window.fwCallLLM(api, apiMessages, { temperature: 0.8 });
+          } catch(e) { /* fall through to original fetch */ }
+        }
+        if (apiContent === undefined) {
+          const response = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({
+              model: api.model,
+              messages: apiMessages,
+              temperature: 0.8
+            })
+          });
 
-        if (!response.ok) throw new Error("连接 API 失败");
+          if (!response.ok) throw new Error("连接 API 失败");
 
-        const result = await response.json();
-        let reply = result.choices[0].message.content.trim();
+          const result = await response.json();
+          apiContent = result.choices[0].message.content;
+        }
+        let reply = apiContent.trim();
 
         const stateMatch = reply.match(/\[PET_STATE\]\s*([\s\S]*?)$/i);
         let foundState = 'default';
@@ -434,10 +539,42 @@
 
         this.currentState = foundState;
         this.renderPetToDesktop();
-        this.popBubble(reply || "(晃动了身体)");
+        const finalReply = reply || "(晃动了身体)";
+        // 把双击回复持久化写入该角色的会话（对标 AI 主动来信），任意页面双击都会进入对话，
+        // 打开与该角色的聊天页即可看到；同时保留全局浮窗气泡 + 系统通知
+        try {
+          const baseTime = Date.now();
+          const newMsg = {
+            sessionId: sess.id,
+            senderType: 'char',
+            senderId: 0,
+            content: finalReply,
+            contentType: 'text',
+            timestamp: baseTime,
+            petOnly: 1
+          };
+          await db.messages.add(newMsg);
+          // 若当前正打开该角色的聊天页，立即刷新消息流
+          if (typeof activeSessionId !== 'undefined' && activeSessionId === sess.id && typeof renderDialogMessages === 'function') {
+            try { await renderDialogMessages(); } catch (e) {}
+          }
+        } catch (e) {
+          console.error("桌宠双击回复写入会话失败:", e);
+        }
+        // 浮窗气泡提示：先收掉「思考中」，再让回复停留够久（至少 6 秒，长句更长）
+        this.stopThinkingBubble();
+        this.popBubble(finalReply, this.replyBubbleDuration(finalReply));
+        // 系统通知（App 在后台或桌面浮窗时也能感知）
+        try {
+          if (window.AndroidMCP && typeof window.AndroidMCP.showSystemNotification === 'function') {
+            const charName = (char && char.name) || sess.customCharName || "桌宠";
+            window.AndroidMCP.showSystemNotification(charName, finalReply);
+          }
+        } catch (e) {}
       } catch (e) {
         console.error("桌宠实时生成 API 出错:", e);
-        this.popBubble("气流阻塞了...");
+        this.stopThinkingBubble();
+        this.popBubble("气流阻塞了...", 5000);
       }
     },
 
@@ -683,7 +820,15 @@
       try {
         const sessions = await db.sessions.where('charId').equals(Number(charId)).toArray();
         if (sessions.length === 0) return;
-        const sess = sessions[0];
+        const personaId = (typeof activeUserPersonaId !== 'undefined' && activeUserPersonaId !== null && activeUserPersonaId !== '')
+          ? Number(activeUserPersonaId)
+          : NaN;
+        let sess = null;
+        if (!isNaN(personaId)) sess = sessions.find(s => Number(s.userId) === personaId) || null;
+        if (!sess && typeof activeSessionId !== 'undefined' && activeSessionId) {
+          sess = sessions.find(s => s.id === activeSessionId) || null;
+        }
+        if (!sess) sess = sessions[0];
 
         // 联动桌宠（仅在该角色正好是当前全局活跃桌宠时冒泡提示）
         if (this.activePetCharId === charId && this.currentState !== 'sleep') {
@@ -769,19 +914,28 @@
         const api = await db.api_presets.get(Number(presetId));
         if (!api) return;
 
-        const response = await fetch(`${api.url}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
-          body: JSON.stringify({
-            model: api.model,
-            messages: messagesToSend,
-            temperature: api.temperature
-          })
-        });
+        let activeContent;
+        if (typeof window.fwCallLLM === "function") {
+          try {
+            activeContent = await window.fwCallLLM(api, messagesToSend, { temperature: api.temperature });
+          } catch(e) { /* fall through to original fetch */ }
+        }
+        if (activeContent === undefined) {
+          const response = await fetch(`${api.url}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${api.key}` },
+            body: JSON.stringify({
+              model: api.model,
+              messages: messagesToSend,
+              temperature: api.temperature
+            })
+          });
 
-        if (!response.ok) return;
-        const result = await response.json();
-        let reply = result.choices[0].message.content.trim();
+          if (!response.ok) return;
+          const result = await response.json();
+          activeContent = result.choices[0].message.content;
+        }
+        let reply = activeContent.trim();
 
         // 剥离 MSG_ID 标签 + think 标签 + AI 可能模仿输出的系统提示标签
         reply = reply.replace(/[\[【]MSG_ID\s*:\s*\d+[\]】]/gi, "");
@@ -817,15 +971,66 @@
         reply = reply.trim();
         if (!reply) return;  // 若剥除指令后为空，不存空消息
 
-        const newMsg = {
-          sessionId: sess.id,
-          senderType: 'char',
-          senderId: 0,
-          content: reply,
-          contentType: 'text',
-          timestamp: Date.now()
+        // === 主动发信遵守线上聊天格式：按句末标点/换行/[SPLIT] 拆分为多条气泡逐条上屏 ===
+        // 与 app_chat.js 线上回复的分句逻辑保持一致，避免主动发信变成一大坨文字
+        const splitActiveBubbles = (text) => {
+          if (!text || typeof text !== 'string') return [];
+          // 按 [SPLIT] / 【SPLIT】 / 换行 粗切成大段
+          const coarseParts = text.split(/\[SPLIT\]|【SPLIT】|[\n\r]+/i).map(p => (p || '').trim()).filter(Boolean);
+          const bubbles = [];
+          coarseParts.forEach(part => {
+            // 按句末标点 (。！？!? 中英文) 拆分句项
+            const sentenceRegex = /([^。！？!?]+[。！？!?]+)/g;
+            const subSentences = part.match(sentenceRegex);
+            if (subSentences && subSentences.length > 0) {
+              let reassembledLen = 0;
+              let currentChunk = [];
+              subSentences.forEach((s, sIdx) => {
+                currentChunk.push(s.trim());
+                reassembledLen += s.length;
+                // 每 1-2 句打包为一个气泡（主动发信通常较短，用 1 句一泡更自然）
+                if (currentChunk.length >= 1 || sIdx === subSentences.length - 1) {
+                  const chunkText = currentChunk.join("");
+                  currentChunk = [];
+                  if (chunkText) bubbles.push(chunkText);
+                }
+              });
+              // 补全末尾未带句末标点的残余尾巴
+              const leftover = part.substring(reassembledLen).trim();
+              if (leftover) {
+                if (bubbles.length > 0) bubbles[bubbles.length - 1] += leftover;
+                else bubbles.push(leftover);
+              }
+            } else {
+              bubbles.push(part);
+            }
+          });
+          return bubbles.filter(Boolean);
         };
-        await db.messages.add(newMsg);
+
+        const activeBubbles = splitActiveBubbles(reply);
+        const bubblesToSave = activeBubbles.length > 0 ? activeBubbles : [reply];
+        // 上限管控：最多 4 条气泡，超出合并到最后一个
+        if (bubblesToSave.length > 4) {
+          const allowed = bubblesToSave.slice(0, 3);
+          allowed.push(bubblesToSave.slice(3).join(""));
+          bubblesToSave.length = 0;
+          bubblesToSave.push(...allowed.filter(Boolean));
+        }
+
+        const baseTime = Date.now();
+        for (let i = 0; i < bubblesToSave.length; i++) {
+          const newMsg = {
+            sessionId: sess.id,
+            senderType: 'char',
+            senderId: 0,
+            content: bubblesToSave[i],
+            contentType: 'text',
+            timestamp: baseTime + i * 1000,  // 每条间隔 1 秒，模拟逐条发送
+            petOnly: 1
+          };
+          await db.messages.add(newMsg);
+        }
 
         const char = await db.archives.get(charId);
         const charName = sess.customCharName || char?.name || "对方";
@@ -836,9 +1041,12 @@
           }
         }
 
-        // 推送通知
+        // 推送通知（使用统一预览清洗，避免显示 <think>/状态栏/HTML 标签）
         if (window.AndroidMCP && typeof window.AndroidMCP.showSystemNotification === 'function') {
-          window.AndroidMCP.showSystemNotification(charName, reply);
+          const notiText = (typeof getMessagePreviewText === 'function')
+            ? getMessagePreviewText({ contentType: 'text', content: reply })
+            : reply;
+          window.AndroidMCP.showSystemNotification(charName, notiText);
         }
 
         // 联动来信冒泡提示
