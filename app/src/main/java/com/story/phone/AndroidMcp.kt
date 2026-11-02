@@ -20,16 +20,60 @@ import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OnnxTensor
 import java.nio.LongBuffer
 
-class AndroidMcp(private val context: Context) {
+class AndroidMcp private constructor(private val context: Context) {
 
     companion object {
         private const val TAG = "AndroidMcp"
         var mainActivity: MainActivity? = null
+        /** Service 托管的 Headless 中枢 WebView：Activity 销毁后 JS 中枢的存活载体 */
+        @Volatile var centerWebView: android.webkit.WebView? = null
         @Volatile private var instance: AndroidMcp? = null
+
+        /** 获取进程级单例（使用 applicationContext，脱离 Activity 生命周期） */
+        @Synchronized
+        fun getInstance(context: Context): AndroidMcp {
+            instance?.let { return it }
+            return AndroidMcp(context.applicationContext).also { instance = it }
+        }
+
+        /** 返回当前可用的 JS 执行 WebView：优先 Service Headless 中枢，兜底 Activity WebView */
+        fun getEffectiveWebView(): android.webkit.WebView? {
+            centerWebView?.let { return it }
+            return mainActivity?.findViewById(R.id.webview)
+        }
 
         /** 兜底释放后台 WakeLock，供 McpForegroundService.onDestroy 调用 */
         fun releaseWakeLockIfHeld() {
             try { instance?.releaseWakeLockSafe() } catch (e: Exception) { e.printStackTrace() }
+        }
+
+        /** 兜底释放蓝牙 SPP/GATT 连接资源 */
+        fun releaseBluetoothIfHeld() {
+            try { instance?.bluetoothMcp?.onDestroy() } catch (e: Exception) { e.printStackTrace() }
+        }
+
+        /** 蓝牙运行时权限申请结果记录（供 JS 判断是否被永久拒绝） */
+        @Volatile
+        var lastBtPermissionRequestSummary: String = "{\"requested\":false}"
+
+        private const val BT_PERMISSION_REQUEST_CODE = 8303
+
+        /** 由 MainActivity.onRequestPermissionsResult 回调写入最近一次申请中被拒绝的权限 */
+        fun recordBluetoothPermissionResult(permissions: Array<out String>, grantResults: IntArray) {
+            try {
+                val denied = ArrayList<String>()
+                permissions.forEachIndexed { i, p ->
+                    val r = if (i < grantResults.size) grantResults[i] else android.content.pm.PackageManager.PERMISSION_DENIED
+                    if (r != android.content.pm.PackageManager.PERMISSION_GRANTED) denied.add(p)
+                }
+                lastBtPermissionRequestSummary = JSONObject().apply {
+                    put("requested", true)
+                    put("denied", JSONArray(denied))
+                    put("time", System.currentTimeMillis())
+                }.toString()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -229,6 +273,42 @@ class AndroidMcp(private val context: Context) {
         }
     }
 
+    // 1.4 Termux 部署脚本离线导出：写入公共 Download/Storypoem/storyphone-scripts/
+    //     （解决超长部署命令复制被截断导致 cmd-runner.js 缺失的问题）
+    private fun ensureLocalDeployScriptDir(): File {
+        val dir = File(getDownloadDir(), "storyphone-scripts")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    @JavascriptInterface
+    fun saveLocalDeployScript(fileName: String, content: String): String {
+        return try {
+            val safe = fileName.replace("/", "_").replace("\\", "_")
+            val f = File(ensureLocalDeployScriptDir(), safe)
+            f.writeText(content, Charsets.UTF_8)
+            JSONObject().apply {
+                put("ok", true)
+                put("path", f.absolutePath)
+                put("bytes", f.length())
+            }.toString()
+        } catch (e: Exception) {
+            "{\"ok\":false,\"error\":${JSONObject.quote(e.message ?: "写入失败")}}"
+        }
+    }
+
+    @JavascriptInterface
+    fun getLocalDeployScriptDir(): String {
+        return try {
+            JSONObject().apply {
+                put("ok", true)
+                put("dir", ensureLocalDeployScriptDir().absolutePath)
+            }.toString()
+        } catch (e: Exception) {
+            "{\"ok\":false,\"error\":\"目录不可用\"}"
+        }
+    }
+
     // 1.4 降级容灾直写：保留作为纯文本备份或单卡片调试导入直写
     @JavascriptInterface
     fun saveBackupFile(jsonString: String, fileName: String): Boolean {
@@ -303,6 +383,75 @@ class AndroidMcp(private val context: Context) {
         }
     }
 
+    /**
+     * 原生二进制 HTTP 请求（专为 TTS 音频等二进制响应设计，100% 绕过浏览器 CORS）。
+     * 与 sendNativeHttpRequest 的区别：响应 body 以 Base64 字符串返回，避免文本化乱码。
+     *
+     * 返回 JSON: { status, bodyBase64, contentType, headers, error }
+     *  - 成功: status=2xx, bodyBase64=音频base64, contentType=audio/mpeg
+     *  - 失败: status=错误码或0, error=错误信息, bodyBase64 可能为空
+     *
+     * 前端用法: const r = JSON.parse(AndroidMCP.sendNativeHttpRequestBinary(url, method, headersJson, bodyStr));
+     *           const blob = await (await fetch(`data:${r.contentType};base64,${r.bodyBase64}`)).blob();
+     */
+    @JavascriptInterface
+    fun sendNativeHttpRequestBinary(urlStr: String, method: String, headersJson: String, bodyStr: String): String {
+        Log.d(TAG, "sendNativeHttpRequestBinary() called, url=$urlStr, method=$method")
+        return try {
+            val url = java.net.URL(urlStr)
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = if (method.isEmpty()) "POST" else method.uppercase()
+            conn.connectTimeout = 20000
+            conn.readTimeout = 30000
+            conn.instanceFollowRedirects = true
+
+            if (headersJson.isNotEmpty()) {
+                val jsonObj = JSONObject(headersJson)
+                val keys = jsonObj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    conn.setRequestProperty(key, jsonObj.getString(key))
+                }
+            }
+
+            if (bodyStr.isNotEmpty() && (conn.requestMethod == "POST" || conn.requestMethod == "PUT" || conn.requestMethod == "PATCH")) {
+                conn.doOutput = true
+                conn.outputStream.use { os ->
+                    os.write(bodyStr.toByteArray(Charsets.UTF_8))
+                }
+            }
+
+            val status = conn.responseCode
+            val contentType = conn.contentType ?: "application/octet-stream"
+            val inputStream = if (status in 200..299) conn.inputStream else conn.errorStream
+            val bodyBytes = inputStream?.use { it.readBytes() } ?: ByteArray(0)
+            val bodyBase64 = if (bodyBytes.isNotEmpty()) android.util.Base64.encodeToString(bodyBytes, android.util.Base64.NO_WRAP) else ""
+
+            val resHeaders = JSONObject()
+            conn.headerFields?.forEach { (k, v) ->
+                if (k != null && v.isNotEmpty()) {
+                    resHeaders.put(k, v[0])
+                }
+            }
+
+            val resultJson = JSONObject()
+            resultJson.put("status", status)
+            resultJson.put("bodyBase64", bodyBase64)
+            resultJson.put("contentType", contentType)
+            resultJson.put("headers", resHeaders)
+            resultJson.toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "sendNativeHttpRequestBinary failed: ${e.message}", e)
+            val errorJson = JSONObject()
+            errorJson.put("status", 0)
+            errorJson.put("bodyBase64", "")
+            errorJson.put("contentType", "")
+            errorJson.put("headers", JSONObject())
+            errorJson.put("error", e.message ?: "Native HTTP Binary Error")
+            errorJson.toString()
+        }
+    }
+
     // 2. 静默读取真机 /Music/Storypoem 目录下的本地歌单列表
     @JavascriptInterface
     fun scanLocalMusicFolder(): String {
@@ -321,6 +470,317 @@ class AndroidMcp(private val context: Context) {
         }
         return jsonArray.toString()
     }
+
+    // ============================================================
+    //  蓝牙管理桥接（真实读取/控制 + 电量）
+    // ============================================================
+    private val bluetoothMcp: BluetoothMcp by lazy { BluetoothMcp(context) }
+
+    /** 读取已连接 + 已配对设备列表 */
+    @JavascriptInterface
+    fun bluetoothGetDevices(): String = bluetoothMcp.getDevicesJson()
+
+    /** 经典蓝牙 SPP 串口发送（真实控制 ESP32/Arduino/智能硬件） */
+    @JavascriptInterface
+    fun bluetoothSendSpp(deviceAddress: String, data: String): Boolean = bluetoothMcp.sendSppData(deviceAddress, data)
+
+    @JavascriptInterface
+    fun bluetoothDisconnectSpp(): Boolean = bluetoothMcp.disconnectSpp()
+
+    @JavascriptInterface
+    fun bluetoothIsSppConnected(): Boolean = bluetoothMcp.isSppConnected()
+
+    /** 系统蓝牙开关（Android 13+ 受限会返回提示） */
+    @JavascriptInterface
+    fun bluetoothSetEnabled(on: Boolean): String = bluetoothMcp.setBluetoothEnabled(on)
+
+    @JavascriptInterface
+    fun bluetoothIsEnabled(): Boolean = bluetoothMcp.isBluetoothEnabled()
+
+    /** 启动 BLE 扫描（timeoutMs 后自动停止），结果通过 bluetoothGetBleResults 拉取 */
+    @JavascriptInterface
+    fun bluetoothScanBle(timeoutMs: Long): String = bluetoothMcp.scanBleDevices(timeoutMs)
+
+    @JavascriptInterface
+    fun bluetoothGetBleResults(): String = bluetoothMcp.getBleScanResults()
+
+    /** BLE 特征值写入（真实控制 BLE 智能设备） */
+    @JavascriptInterface
+    fun bluetoothBleWrite(deviceAddress: String, serviceUuid: String, charUuid: String, dataHex: String): String =
+        bluetoothMcp.bleConnectAndWrite(deviceAddress, serviceUuid, charUuid, dataHex)
+
+    @JavascriptInterface
+    fun bluetoothGetBleWriteResult(): String = bluetoothMcp.getBleWriteResult()
+
+    /** 真实电量 + 充电状态（BatteryManager 系统服务） */
+    @JavascriptInterface
+    fun getBatteryStatus(): String = bluetoothMcp.getBatteryStatusJson()
+
+    /** 打开系统蓝牙设置页（添加/配对设备入口） */
+    @JavascriptInterface
+    fun openBluetoothSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /** BLE 服务发现（能力档案配置辅助：枚举设备 GATT 服务/特征） */
+    @JavascriptInterface
+    fun bluetoothBleDiscoverServices(deviceAddress: String): String = bluetoothMcp.bleDiscoverServices(deviceAddress)
+
+    @JavascriptInterface
+    fun bluetoothGetBleServicesResult(): String = bluetoothMcp.getBleServicesResult()
+
+    // ---------------- BLE 保活写入会话（玩具类持续控制）----------------
+
+    /** 启动保活写入会话：周期续帧防设备自停（ANKNI 等玩具 1~2s 会自停） */
+    @JavascriptInterface
+    fun bleHoldStart(deviceAddress: String, serviceUuid: String, charUuid: String, dataHex: String, intervalMs: Long): String =
+        bluetoothMcp.bleHoldStart(deviceAddress, serviceUuid, charUuid, dataHex, intervalMs)
+
+    /** 更新保活会话当前帧（改强度/换指令不重连） */
+    @JavascriptInterface
+    fun bleHoldUpdate(dataHex: String): String = bluetoothMcp.bleHoldUpdate(dataHex)
+
+    /** 停止保活会话 */
+    @JavascriptInterface
+    fun bleHoldStop(): String = bluetoothMcp.bleHoldStop()
+
+    /** 查询保活会话状态 */
+    @JavascriptInterface
+    fun bleHoldState(): String = bluetoothMcp.bleHoldState()
+
+    /** 拉取保活会话最近结果 */
+    @JavascriptInterface
+    fun bleHoldGetLastResult(): String = bluetoothMcp.getHoldLastResult()
+
+    // ---------------- 蓝牙运行时权限闭环（Android 12+ 附近设备权限）----------------
+
+    /**
+     * 实时蓝牙权限状态：{connect,scan,fine,btOn,needLocation, rationale*, permanentlyDenied*}
+     * 供 JS 决定：直接重试 / 引导再次申请 / 跳系统设置。
+     */
+    @JavascriptInterface
+    fun getBluetoothPermissionState(): String {
+        return try {
+            val granted = android.content.pm.PackageManager.PERMISSION_GRANTED
+            val connectGranted: Boolean
+            val scanGranted: Boolean
+            val fineGranted = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == granted
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                connectGranted = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == granted
+                scanGranted = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) == granted
+            } else {
+                // Android 11 及以下：这两个属安装时普通权限，天然已授予
+                connectGranted = true
+                scanGranted = true
+            }
+            val act = mainActivity
+            val rationaleConnect = act?.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_CONNECT) ?: false
+            val rationaleScan = act?.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_SCAN) ?: false
+            JSONObject().apply {
+                put("ok", true)
+                put("connect", connectGranted)
+                put("scan", scanGranted)
+                put("fine", fineGranted)
+                put("btOn", try { bluetoothMcp.isBluetoothEnabled() } catch (e: Exception) { false })
+                // Android 12+ 已声明 neverForLocation：不再需要定位；Android 11- 扫描仍需定位
+                put("needLocation", Build.VERSION.SDK_INT < Build.VERSION_CODES.S && !fineGranted)
+                put("rationaleConnect", rationaleConnect)
+                put("rationaleScan", rationaleScan)
+                put("permanentlyDeniedConnect", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !connectGranted && !rationaleConnect)
+                put("permanentlyDeniedScan", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !scanGranted && !rationaleScan)
+                put("sdkInt", Build.VERSION.SDK_INT)
+                put("lastRequest", try { JSONObject(lastBtPermissionRequestSummary) } catch (e: Exception) { JSONObject() })
+            }.toString()
+        } catch (e: Exception) {
+            "{\"ok\":false,\"error\":\"权限状态读取失败\"}"
+        }
+    }
+
+    /** 主动发起蓝牙运行时权限申请（拒绝后可再次调用；永久拒绝后系统不再弹窗，需走设置页） */
+    @JavascriptInterface
+    fun requestBluetoothPermissions(): String {
+        val act = mainActivity ?: return "{\"ok\":false,\"error\":\"界面尚未就绪\"}"
+        return try {
+            val granted = android.content.pm.PackageManager.PERMISSION_GRANTED
+            val perms = ArrayList<String>()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != granted)
+                    perms.add(android.Manifest.permission.BLUETOOTH_CONNECT)
+                if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) != granted)
+                    perms.add(android.Manifest.permission.BLUETOOTH_SCAN)
+            } else {
+                if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != granted)
+                    perms.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            if (perms.isEmpty()) {
+                "{\"ok\":true,\"already\":true}"
+            } else {
+                act.requestPermissions(perms.toTypedArray(), BT_PERMISSION_REQUEST_CODE)
+                lastBtPermissionRequestSummary = "{\"requested\":true,\"pending\":${perms.size}}"
+                "{\"ok\":true,\"requesting\":true,\"count\":${perms.size}}"
+            }
+        } catch (e: Exception) {
+            "{\"ok\":false,\"error\":${JSONObject.quote(e.message ?: "权限申请失败")}}"
+        }
+    }
+
+    /** 用系统浏览器/App 打开外链（分享卡片点击） */
+    @JavascriptInterface
+    fun openExternalUrl(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /** 跳转本应用系统详情页（供“永久拒绝”后手动开启附近设备/通知等权限） */
+    @JavascriptInterface
+    fun openAppBluetoothPermissionSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * 系统媒体控制通道（蓝牙耳机等媒体设备的统一控制）。
+     * 支持命令：
+     * - volume_up / volume_down：音量加减（音乐流，A2DP 耳机跟随手机媒体音量）
+     * - volume_set：音量调到 value(0-100)
+     * - volume_mute / volume_unmute：静音/取消静音
+     * - play / pause / play_pause / stop：本应用媒体播放器控制；未播放时兜底派发系统媒体键
+     * - next / prev：派发系统媒体键（切歌，外部媒体应用生效；本应用歌单切歌由 JS 侧处理）
+     */
+    @JavascriptInterface
+    fun mediaControlCommand(cmd: String, value: Int): String {
+        return try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            when (cmd) {
+                "volume_up" -> {
+                    audioManager.adjustStreamVolume(
+                        android.media.AudioManager.STREAM_MUSIC,
+                        android.media.AudioManager.ADJUST_RAISE,
+                        android.media.AudioManager.FLAG_PLAY_SOUND
+                    )
+                    okJson("volume_up")
+                }
+                "volume_down" -> {
+                    audioManager.adjustStreamVolume(
+                        android.media.AudioManager.STREAM_MUSIC,
+                        android.media.AudioManager.ADJUST_LOWER,
+                        android.media.AudioManager.FLAG_PLAY_SOUND
+                    )
+                    okJson("volume_down")
+                }
+                "volume_set" -> {
+                    val max = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                    val target = if (max > 0) value.coerceIn(0, 100) * max / 100 else 0
+                    audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, target, android.media.AudioManager.FLAG_PLAY_SOUND)
+                    JSONObject().apply {
+                        put("ok", true)
+                        put("cmd", "volume_set")
+                        put("value", value.coerceIn(0, 100))
+                    }.toString()
+                }
+                "volume_mute" -> {
+                    audioManager.adjustStreamVolume(
+                        android.media.AudioManager.STREAM_MUSIC,
+                        android.media.AudioManager.ADJUST_MUTE,
+                        android.media.AudioManager.FLAG_PLAY_SOUND
+                    )
+                    okJson("volume_mute")
+                }
+                "volume_unmute" -> {
+                    audioManager.adjustStreamVolume(
+                        android.media.AudioManager.STREAM_MUSIC,
+                        android.media.AudioManager.ADJUST_UNMUTE,
+                        android.media.AudioManager.FLAG_PLAY_SOUND
+                    )
+                    okJson("volume_unmute")
+                }
+                "play" -> {
+                    if (mediaPlayer != null && mediaPlayer?.isPlaying == false) resumeMusicNatively()
+                    else dispatchMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
+                    okJson("play")
+                }
+                "pause" -> {
+                    if (mediaPlayer?.isPlaying == true) pauseMusicNatively()
+                    else dispatchMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE)
+                    okJson("pause")
+                }
+                "play_pause" -> {
+                    if (mediaPlayer?.isPlaying == true) pauseMusicNatively()
+                    else if (mediaPlayer != null) resumeMusicNatively()
+                    else dispatchMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                    okJson("play_pause")
+                }
+                "stop" -> {
+                    if (mediaPlayer != null) stopMusicNatively()
+                    else dispatchMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_STOP)
+                    okJson("stop")
+                }
+                "next" -> {
+                    dispatchMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
+                    okJson("next")
+                }
+                "prev" -> {
+                    dispatchMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+                    okJson("prev")
+                }
+                else -> JSONObject().apply {
+                    put("ok", false)
+                    put("error", "未知媒体命令: " + cmd)
+                }.toString()
+            }
+        } catch (e: Exception) {
+            Log.e("AndroidMcp", "mediaControlCommand 失败: " + e.message)
+            JSONObject().apply {
+                put("ok", false)
+                put("error", e.message ?: "媒体控制失败")
+            }.toString()
+        }
+    }
+
+    private fun okJson(cmd: String): String = JSONObject().apply {
+        put("ok", true)
+        put("cmd", cmd)
+    }.toString()
+
+    private fun dispatchMediaKey(keyCode: Int) {
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            audioManager.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
+            audioManager.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
+        } catch (e: Exception) {
+            Log.e("AndroidMcp", "dispatchMediaKey 失败: " + e.message)
+        }
+    }
+
+    /** 停止闹钟循环铃声（用户手动关闭） */
+    @JavascriptInterface
+    fun stopAlarmRingtone() {
+        InAppAlarmReceiver.stopRingtone()
+    }
+
+    /** 查询闹钟铃声是否正在响 */
+    @JavascriptInterface
+    fun isAlarmRingtonePlaying(): Boolean = InAppAlarmReceiver.isRingtonePlaying()
 
     private fun registerMediaReceiver() {
         try {
@@ -670,8 +1130,9 @@ class AndroidMcp(private val context: Context) {
         }
     }
 
+    /** 返回当前可用的 JS 执行 WebView（中枢优先，Activity 兜底） */
     private fun getWebView(): android.webkit.WebView? {
-        return (context as? MainActivity)?.findViewById(R.id.webview)
+        return getEffectiveWebView()
     }
 
     private var floatPetView: android.view.View? = null
@@ -785,6 +1246,243 @@ class AndroidMcp(private val context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
             "{}"
+        }
+    }
+
+
+    // 9.2 当前正在播放的媒体（跨应用：通知监听解析 + 本应用会话兜底）
+    @JavascriptInterface
+    fun isNotificationListenerGranted(): Boolean {
+        return try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.isNotificationListenerAccessGranted(android.content.ComponentName(context, NowPlayingListenerService::class.java))
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * 读取当前正在播放的媒体信息，返回 JSON：
+     * {"ok":true,"granted":true,"title":"歌名","artist":"歌手","album":"专辑","appName":"网易云音乐","playing":true}
+     * granted=false 表示尚未授予"通知使用权"权限（前端引导用户去系统设置开启）。
+     */
+    @JavascriptInterface
+    fun getNowPlayingMedia(): String {
+        return try {
+            // 1) 通知监听缓存（跨应用最可靠，需通知使用权）
+            if (isNotificationListenerGranted()) {
+                val cached = NowPlayingListenerService.currentPlaying
+                if (cached != null) {
+                    return try {
+                        val obj = JSONObject(cached)
+                        obj.put("ok", true)
+                        obj.put("granted", true)
+                        obj.toString()
+                    } catch (e: Exception) { cached }
+                }
+            }
+            // 2) 本应用自身的 MediaSession（自己放歌时）
+            try {
+                val self = JSONObject(getCurrentMediaInfo())
+                val selfSong = self.optString("songName")
+                if (selfSong.isNotBlank() && self.optBoolean("isPlaying")) {
+                    return JSONObject().apply {
+                        put("ok", true)
+                        put("granted", isNotificationListenerGranted())
+                        put("title", selfSong)
+                        put("artist", "")
+                        put("album", "")
+                        put("appName", "叙事诗小手机")
+                        put("playing", true)
+                    }.toString()
+                }
+            } catch (e: Exception) {}
+            // 3) 兜底：旧系统/有权限时直接枚举活跃媒体会话
+            queryActiveSessions()?.let { return it }
+            // 4) 没有权限时的提示
+            if (!isNotificationListenerGranted()) {
+                return JSONObject().apply {
+                    put("ok", true)
+                    put("granted", false)
+                    put("title", "")
+                    put("artist", "")
+                    put("appName", "")
+                    put("playing", false)
+                    put("message", "需要通知使用权权限，请在系统设置中开启")
+                }.toString()
+            }
+            JSONObject().apply {
+                put("ok", true)
+                put("granted", true)
+                put("title", "")
+                put("artist", "")
+                put("appName", "")
+                put("playing", false)
+                put("message", "当前没有检测到正在播放的媒体")
+            }.toString()
+        } catch (e: Exception) {
+            Log.e("AndroidMcp", "getNowPlayingMedia 失败: " + e.message)
+            JSONObject().apply {
+                put("ok", false)
+                put("error", e.message ?: "读取失败")
+            }.toString()
+        }
+    }
+
+    /**
+     * 主动刷新"正在播放"：已授予通知使用权时，请求系统重绑监听服务，
+     * 触发 onListenerConnected 里的当前通知快照（解决进程晚启动/重装后缓存为空）。
+     */
+    @JavascriptInterface
+    fun refreshNowPlayingMedia(): String {
+        return try {
+            val cn = android.content.ComponentName(context, NowPlayingListenerService::class.java)
+            if (isNotificationListenerGranted()) {
+                // 双管齐下：请求系统重绑 + 若服务已在跑则直接让它快照当前通知栏
+                android.service.notification.NotificationListenerService.requestRebind(cn)
+                NowPlayingListenerService.requestSnapshot()
+                "{\"ok\":true,\"rebind\":true,\"serviceAlive\":" + NowPlayingListenerService.isServiceAlive() + "}"
+            } else {
+                "{\"ok\":true,\"granted\":false}"
+            }
+        } catch (e: Exception) {
+            "{\"ok\":false,\"error\":\"重绑请求失败\"}"
+        }
+    }
+
+    /**
+     * 一键修复"通知监听服务未被系统绑定"（部分 ROM：权限开着但服务死活不绑定）。
+     * 先请求重绑；仍无效则用"组件禁用→再启用"强制系统重新拉起监听服务。
+     */
+    @JavascriptInterface
+    fun repairNotificationListener(): String {
+        return try {
+            val cn = android.content.ComponentName(context, NowPlayingListenerService::class.java)
+            val grantedBefore = isNotificationListenerGranted()
+            android.service.notification.NotificationListenerService.requestRebind(cn)
+            NowPlayingListenerService.requestSnapshot()
+            val aliveBefore = NowPlayingListenerService.isServiceAlive()
+            if (!aliveBefore) {
+                try {
+                    val pm = context.packageManager
+                    pm.setComponentEnabledSetting(
+                        cn,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP
+                    )
+                    Thread {
+                        try {
+                            Thread.sleep(450)
+                            pm.setComponentEnabledSetting(
+                                cn,
+                                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                                android.content.pm.PackageManager.DONT_KILL_APP
+                            )
+                        } catch (e: Exception) { e.printStackTrace() }
+                    }.start()
+                } catch (e: Exception) { e.printStackTrace() }
+            }
+            JSONObject().apply {
+                put("ok", true)
+                put("grantedBefore", grantedBefore)
+                put("aliveBefore", aliveBefore)
+                put("grantedAfter", isNotificationListenerGranted())
+                put("action", if (aliveBefore) "rebind" else "toggle_component")
+            }.toString()
+        } catch (e: Exception) {
+            "{\"ok\":false,\"error\":${JSONObject.quote(e.message ?: "修复失败")}}"
+        }
+    }
+
+    /** 诊断信息：判断通知监听是否真的在收数据、媒体判定卡在哪一步 */
+    @JavascriptInterface
+    fun getNowPlayingDebug(): String {
+        return try {
+            JSONObject().apply {
+                put("ok", true)
+                put("granted", isNotificationListenerGranted())
+                put("serviceAlive", NowPlayingListenerService.isServiceAlive())
+                put("cachedPlaying", NowPlayingListenerService.currentPlaying ?: "")
+                put("lastUpdateTs", NowPlayingListenerService.lastUpdateTs)
+                put("lastAnyNotification", NowPlayingListenerService.lastAnyNotificationSummary)
+                put("sdkInt", Build.VERSION.SDK_INT)
+            }.toString()
+        } catch (e: Exception) {
+            "{\"ok\":false,\"error\":\"诊断失败\"}"
+        }
+    }
+
+    /** 枚举活跃媒体会话（老系统可读；新系统无权限时返回 null） */
+    private fun queryActiveSessions(): String? {
+        return try {
+            val msm = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as android.media.session.MediaSessionManager
+            val sessions = msm.getActiveSessions(null)
+            if (sessions.isNullOrEmpty()) return null
+            val controller = sessions[0]
+            val meta = controller.metadata ?: return null
+            val title = meta.description.title?.toString()?.takeIf { it.isNotBlank() } ?: return null
+            JSONObject().apply {
+                put("ok", true)
+                put("granted", isNotificationListenerGranted())
+                put("title", title)
+                put("artist", meta.description.subtitle?.toString() ?: "")
+                put("album", meta.description.description?.toString() ?: "")
+                put("appName", controller.packageName)
+                put("playing", controller.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING)
+            }.toString()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+
+    // 10. 工作台文件系统桥接（Workbench 本地工作区）
+    private val workbenchFs: WorkbenchFileSystem by lazy { WorkbenchFileSystem(context) }
+
+    @JavascriptInterface
+    fun wbListDir(path: String): String = workbenchFs.listDir(path)
+
+    @JavascriptInterface
+    fun wbReadFile(path: String): String = workbenchFs.readFile(path)
+
+    @JavascriptInterface
+    fun wbWriteFile(path: String, content: String): String = workbenchFs.writeFile(path, content)
+
+    @JavascriptInterface
+    fun wbMkdir(path: String): String = workbenchFs.mkdir(path)
+
+    @JavascriptInterface
+    fun wbDelete(path: String): String = workbenchFs.deletePath(path)
+
+    @JavascriptInterface
+    fun wbGetRoots(): String = workbenchFs.getRoots()
+
+    @JavascriptInterface
+    fun wbListPublicDir(path: String): String = workbenchFs.listPublicDir(path)
+
+    /** 工作区是否位于公共 Download（前端显示路径/引导授权用） */
+    @JavascriptInterface
+    fun wbIsPublicWorkspace(): Boolean = workbenchFs.isPublicWorkspace()
+
+    /** 引导用户开启「所有文件访问」权限（工作区位于 Download 需要；Android 11+） */
+    @JavascriptInterface
+    fun wbRequestStoragePermission() {
+        try {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = android.net.Uri.parse("package:" + context.packageName)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            try {
+                val fallback = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(fallback)
+            } catch (e2: Exception) {
+                e2.printStackTrace()
+            }
         }
     }
 
@@ -1053,8 +1751,9 @@ class AndroidMcp(private val context: Context) {
     private fun onOverlayDoubleClick() {
         Log.d(TAG, "onOverlayDoubleClick() called, executing JS quietly in background")
         try {
-            mainActivity?.runOnUiThread {
-                getWebView()?.evaluateJavascript(
+            val webView = getEffectiveWebView() ?: return
+            webView.post {
+                webView.evaluateJavascript(
                     "javascript:if(window.desktopPetSystem) { window.desktopPetSystem.handleDoubleClickBackground(); }",
                     null
                 )
@@ -1069,11 +1768,10 @@ class AndroidMcp(private val context: Context) {
     // ============================================================
 
     // 本地 ONNX 向量模型的下载源（all-MiniLM-L6-v2 量化版，384 维）
-    // ★ 开源版说明：模型与词表均直接引用 HuggingFace 官方仓库 sentence-transformers/all-MiniLM-L6-v2
-    //   本项目不托管、不分发该模型，下载与可用性由上游官方仓库负责，与本项目作者无关。
-    //   如遇 HuggingFace 访问受限，请自行配置网络代理或更换为可访问的官方镜像。
+    // 模型与词表文件均直接从 HuggingFace 官方仓库下载，本项目不托管、不分发、不打包该模型。
+    // 下载链接的可用性与合规性由上游官方仓库负责，与本仓库作者无关。
     private val MODEL_DOWNLOAD_URL = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model_quantized.onnx"
-    // 词表同样使用 HuggingFace 官方地址，下载失败不影响推理（降级哈希分词）
+    // 词表同样来自官方仓库；下载失败不影响推理（降级哈希分词）
     private val VOCAB_DOWNLOAD_URL = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/vocab.txt"
     private val LOCAL_MODEL_FILENAME = "model_quantized.onnx"
     private val LOCAL_VOCAB_FILENAME = "vocab.txt"
@@ -1264,11 +1962,10 @@ class AndroidMcp(private val context: Context) {
      * 向前端回传下载进度（通过 evaluateJavascript 调用 window.onEmbeddingModelDownloadProgress）。
      */
     private fun reportDownloadProgress(activity: android.app.Activity?, stage: String, percent: Int, downloaded: Long, total: Long, error: String?) {
-        if (activity == null) return
         try {
-            activity.runOnUiThread {
+            val webView = getEffectiveWebView() ?: return
+            webView.post {
                 try {
-                    val webView = getWebView() ?: return@runOnUiThread
                     val p = if (percent < 0) 0 else percent
                     val errJson = if (error != null) org.json.JSONObject.quote(error) else "null"
                     val js = "javascript:if(window.onEmbeddingModelDownloadProgress){window.onEmbeddingModelDownloadProgress(${org.json.JSONObject.quote(stage)},$p,$downloaded,$total,$errJson);}"
@@ -1541,4 +2238,5 @@ class AndroidMcp(private val context: Context) {
         val fallbackVector = generateDeterministicSemanticVector(text)
         return fallbackVector.toString()
     }
+
 }
