@@ -6,6 +6,7 @@ let isSettingsInitialized = false;
 
 // 专属临时存储自定义图标和壁纸的 Blob 二进制指针
 let tempBgBlob = null;
+let tempBgFile = null;   // 壁纸原始文件：保存时逐级压缩，直到能塞进 localStorage
 
 function initSettingsApp() {
   if (isSettingsInitialized) return;
@@ -18,6 +19,23 @@ function initSettingsApp() {
   loadDeeptalkPresetsList(); // 初始化载入深谈预设
   initVConsoleSetting();     // 初始化调试控制台开关状态
   initBackgroundSetting();   // 初始化后台运行开关状态
+
+  // 绑定：API 页签（链接 / 专用）
+  document.querySelectorAll('.api-mode-tab').forEach(function (t) {
+    t.onclick = function () { switchApiMode(t.getAttribute('data-mode')); };
+  });
+  switchApiMode(localStorage.getItem('api-mode-tab') || 'link');
+  const btnResetDedicated = document.getElementById('btn-reset-dedicated');
+  if (btnResetDedicated) {
+    btnResetDedicated.onclick = function () {
+      showCustomConfirm('恢复默认', '确定把所有功能都改回「跟随链接」吗？', function () {
+        if (!window.apiRoutes) return;
+        window.apiRoutes.FEATURES.forEach(function (f) { window.apiRoutes.clearFeature(f.key); });
+        renderDedicatedApiPanel();
+        if (typeof showToast === 'function') showToast('已全部恢复为跟随链接');
+      });
+    };
+  }
 
   // 绑定：二级面板中深谈预设设置的保存、删除与表单反馈
   document.getElementById("btn-save-deeptalk-preset").onclick = saveDeeptalkPreset;
@@ -33,6 +51,7 @@ function initSettingsApp() {
       if (e.target.files.length > 0) {
         showToast("正在执行高清桌面壁纸自适应压缩...");
         const file = e.target.files[0];
+        tempBgFile = file;   // 保存时按需要再压一次（逐级降规格直到能写进 localStorage）
         
         // 在轨 Canvas 压缩，将数兆壁纸瞬时降至 150KB 级别，彻底避免 QuotaExceededError 崩溃
         const compressedBlob = await new Promise((resolve) => {
@@ -172,6 +191,8 @@ function initSettingsApp() {
       else if (appId === "shopping") appName = "购物";
       else if (appId === "encounter") appName = "邂逅";
       else if (appId === "quicktravel") appName = "快穿局";
+      else if (appId === "workbench") appName = "工作台";
+      else if (appId === "yigui") appName = "仪轨";
 
       alert(`应用「${appName}」图标已重置为系统默认。`);
       if (window.loadDesktopLayout) window.loadDesktopLayout();
@@ -187,8 +208,36 @@ function initSettingsApp() {
     };
   }
 
+  // 绑定：桌面整体放缩数值即时变动与即时预览
+  const scaleInput = document.getElementById("beautify-desktop-scale");
+  const scaleValText = document.getElementById("beautify-desktop-scale-val");
+  if (scaleInput && scaleValText) {
+    scaleInput.oninput = (e) => {
+      scaleValText.innerText = e.target.value;
+      applyDesktopScale(parseFloat(e.target.value));
+    };
+  }
+
   document.getElementById("btn-save-beautify").onclick = saveBeautifyConfig;
   document.getElementById("btn-reset-beautify").onclick = resetBeautifyConfig;
+
+  // 绑定：自定义应用图标面板收起/展开
+  const iconsToggle = document.getElementById("beautify-icons-toggle");
+  const iconsList = document.getElementById("beautify-icons-list");
+  if (iconsToggle && iconsList) {
+    iconsToggle.onclick = () => {
+      const collapsed = iconsList.style.display === "none";
+      if (collapsed) { iconsList.style.display = "flex"; iconsToggle.textContent = "收起"; }
+      else { iconsList.style.display = "none"; iconsToggle.textContent = "展开"; }
+    };
+  }
+
+  // 绑定：全局字体管理
+  initGlobalFontPanel();
+
+  // 绑定：恢复初始 UI（清空所有桌面样式、组件与图标排布）
+  const btnResetInitialUI = document.getElementById("btn-reset-initial-ui");
+  if (btnResetInitialUI) btnResetInitialUI.onclick = resetInitialUI;
 
   // 绑定：内置 UI 主题预设应用事件 (由独立的 app_desktop_presets.js 驱动)
   const btnApplyBuiltin = document.getElementById("btn-apply-builtin-preset");
@@ -228,6 +277,9 @@ function initSettingsApp() {
   const btnCleanAvatars = document.getElementById("btn-clean-redundant-avatars");
   if (btnCleanAvatars) btnCleanAvatars.onclick = cleanRedundantAvatars;
 
+  const btnManageImages = document.getElementById("btn-manage-images");
+  if (btnManageImages) btnManageImages.onclick = openImageManager;
+
   // 绑定：数据管理 (7块隔离导出/导入功能)
   document.getElementById("btn-export-beautify").onclick = exportBeautifyPack;
   document.getElementById("btn-import-beautify").onclick = () => document.getElementById("file-import-beautify").click();
@@ -242,6 +294,11 @@ function initSettingsApp() {
   document.getElementById("file-import-all").onchange = importBackup;
 
   document.getElementById("btn-clear-all-data").onclick = clearAllAppData;
+  // 工作台数据清理（对话 + 可选配置；弹窗由 app_workbench.js 提供）
+  document.getElementById("btn-clear-workbench").onclick = function() {
+    if (typeof window.clearWorkbenchData === "function") window.clearWorkbenchData();
+    else if (typeof showToast === "function") showToast("工作台模块未加载");
+  };
 
   // 注：本地向量记忆检索总开关已迁移至「向量化记忆设置」二级面板，由 vectorMemorySystem 统一接管
 
@@ -303,8 +360,10 @@ function openSettingsLv2(subTab) {
     deeptalk: '深谈预设设置',
     imagegen: '生图设置',
     data: '数据分区管理',
+    'local-deploy': '本地部署',
     'force-update': '系统强更新',
-    changelog: '更新日志'
+    changelog: '更新日志',
+    about: '关于本机'
   };
   document.getElementById("settings-title").innerText = titles[subTab] || '系统设置';
 
@@ -407,6 +466,8 @@ function handleSettingsBack() {
 async function loadPresetsList() {
   const select = document.getElementById("api-presets-select");
   const presets = await db.api_presets.toArray();
+  // v1.5.20：预设（含破限挂载）变化后重建索引，保证按 url 回退匹配也拿到最新配置
+  try { if (typeof window.rebuildJailbreakPresetIndex === 'function') window.rebuildJailbreakPresetIndex(); } catch (e) {}
   select.innerHTML = '<option value="">-- 选择已有预设 --</option>';
   presets.forEach(p => {
     const opt = document.createElement("option");
@@ -420,6 +481,8 @@ async function loadPresetsList() {
     select.value = activeId;
     loadPresetToForm(Number(activeId));
   }
+  // 预设增删改后，同步刷新「专用」页签的下拉（全局预设名也可能变化）
+  if (document.getElementById('api-dedicated-list')) renderDedicatedApiPanel();
 }
 
 async function loadPresetToForm(id) {
@@ -434,7 +497,220 @@ async function loadPresetToForm(id) {
   
   const modelSelect = document.getElementById("api-model-select");
   modelSelect.innerHTML = `<option value="${preset.model || ""}">${preset.model || "默认模型"}</option>`;
+
+  // v1.5.20：带上该预设的破限世界书挂载（切预设即切破限设定）
+  currentJailbreakEntryIds = Array.isArray(preset.jailbreakEntryIds) ? preset.jailbreakEntryIds.slice() : [];
+  renderJailbreakSummary();
 }
+
+// ==========================================
+// 1.4.5 破限世界书挂载（每个 API 预设各自携带）
+//   · 选择器是自绘淡彩卡片（不用原生弹窗）
+//   · 选中条目会作为最高优先级设定注入该预设的每一次模型调用
+// ==========================================
+let currentJailbreakEntryIds = [];
+
+// 本地转义：不依赖 app_chat.js 里的 escapeHtml（避免脚本顺序耦合）
+function jbEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function renderJailbreakSummary() {
+  const box = document.getElementById("api-jailbreak-summary");
+  if (!box) return;
+  const ids = currentJailbreakEntryIds || [];
+  if (ids.length === 0) {
+    box.innerHTML = '<div class="jb-summary-empty">未挂载 · 该预设的所有调用都不会注入破限设定</div>';
+    return;
+  }
+  let entries = [];
+  try { entries = await db.world_book_entries.toArray(); } catch (e) {}
+  const picked = ids.map(id => entries.find(e => Number(e.id) === Number(id))).filter(Boolean);
+  const missing = ids.length - picked.length;
+  box.innerHTML = '<div class="jb-chips">' + ids.map(id => {
+    const e = entries.find(x => Number(x.id) === Number(id));
+    const title = e ? (e.title || '未命名条目') : '（条目已删除）';
+    const grp = e && e.group ? e.group : '';
+    return '<span class="jb-chip' + (e ? '' : ' missing') + '">' +
+      '<span class="jb-chip-title">' + jbEsc(title) + '</span>' +
+      (grp ? '<span class="jb-chip-group">' + jbEsc(grp) + '</span>' : '') +
+      '</span>';
+  }).join('') + '</div>' +
+    '<div class="jb-summary-note">已挂载 ' + picked.length + ' 条' + (missing > 0 ? '（其中 ' + missing + ' 条已被删除）' : '') + ' · 每次调用都会作为最高优先级注入</div>';
+}
+
+async function openJailbreakPicker() {
+  let entries = [];
+  try { entries = await db.world_book_entries.toArray(); } catch (e) {}
+  if (!entries || entries.length === 0) {
+    showToast("世界书里还没有条目，先去「世界书」添加");
+    return;
+  }
+  // 破限底料 / 常驻 分组优先展示（这两组本身就是"常驻"语义，最常被当破限用）
+  const priorityGroups = ['破限底料', '常驻'];
+  entries.sort((a, b) => {
+    const ai = priorityGroups.indexOf(a.group || '');
+    const bi = priorityGroups.indexOf(b.group || '');
+    const av = ai === -1 ? 99 : ai;
+    const bv = bi === -1 ? 99 : bi;
+    if (av !== bv) return av - bv;
+    return String(a.group || '').localeCompare(String(b.group || ''));
+  });
+
+  const selected = new Set((currentJailbreakEntryIds || []).map(n => Number(n)));
+  const groups = [];
+  entries.forEach(e => {
+    const g = e.group || '默认分组';
+    let bucket = groups.find(x => x.name === g);
+    if (!bucket) { bucket = { name: g, items: [] }; groups.push(bucket); }
+    bucket.items.push(e);
+  });
+
+  const overlay = document.createElement("div");
+  overlay.className = "jb-picker-overlay";
+  overlay.innerHTML =
+    '<div class="jb-picker-sheet">' +
+      '<div class="jb-picker-head">' +
+        '<div>' +
+          '<div class="jb-picker-title">挂载破限世界书</div>' +
+          '<div class="jb-picker-sub">可多选 · 也可一条不选。选中的条目会注入这个 API 预设的每一次调用。</div>' +
+        '</div>' +
+        '<button class="jb-picker-close" id="jb-picker-close" aria-label="关闭">' +
+          '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>' +
+        '</button>' +
+      '</div>' +
+      '<div class="jb-picker-body" id="jb-picker-body">' +
+        groups.map(g =>
+          '<div class="jb-group">' +
+            '<div class="jb-group-name">' + jbEsc(g.name) + '<span class="jb-group-count">' + g.items.length + '</span></div>' +
+            '<div class="jb-group-cards">' +
+              g.items.map(e => {
+                const on = selected.has(Number(e.id));
+                const preview = String(e.content || '').replace(/\s+/g, ' ').slice(0, 54);
+                return '<button type="button" class="jb-card' + (on ? ' on' : '') + '" data-jb-id="' + e.id + '">' +
+                  '<span class="jb-card-check">' + (on ? '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : '') + '</span>' +
+                  '<span class="jb-card-main">' +
+                    '<span class="jb-card-title">' + jbEsc(e.title || '未命名条目') + '</span>' +
+                    '<span class="jb-card-preview">' + jbEsc(preview) + (String(e.content || '').length > 54 ? '…' : '') + '</span>' +
+                  '</span>' +
+                '</button>';
+              }).join('') +
+            '</div>' +
+          '</div>'
+        ).join('') +
+      '</div>' +
+      '<div class="jb-picker-foot">' +
+        '<span class="jb-picker-count" id="jb-picker-count"></span>' +
+        '<div style="display:flex; gap:8px;">' +
+          '<button type="button" class="jb-btn ghost" id="jb-picker-clear">清空</button>' +
+          '<button type="button" class="jb-btn primary" id="jb-picker-ok">完成</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add("active"));
+
+  const countEl = overlay.querySelector("#jb-picker-count");
+  const refreshCount = () => { if (countEl) countEl.innerText = '已选 ' + selected.size + ' 条'; };
+  refreshCount();
+
+  const close = () => {
+    overlay.classList.remove("active");
+    setTimeout(() => overlay.remove(), 220);
+  };
+
+  overlay.querySelectorAll(".jb-card").forEach(card => {
+    card.onclick = () => {
+      const id = Number(card.getAttribute("data-jb-id"));
+      if (selected.has(id)) { selected.delete(id); card.classList.remove("on"); card.querySelector(".jb-card-check").innerHTML = ""; }
+      else { selected.add(id); card.classList.add("on"); card.querySelector(".jb-card-check").innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'; }
+      refreshCount();
+    };
+  });
+
+  overlay.querySelector("#jb-picker-close").onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelector("#jb-picker-clear").onclick = () => {
+    selected.clear();
+    overlay.querySelectorAll(".jb-card").forEach(c => { c.classList.remove("on"); c.querySelector(".jb-card-check").innerHTML = ""; });
+    refreshCount();
+  };
+  overlay.querySelector("#jb-picker-ok").onclick = () => {
+    // 保持世界书原有顺序，便于展示稳定
+    currentJailbreakEntryIds = entries.filter(e => selected.has(Number(e.id))).map(e => Number(e.id));
+    renderJailbreakSummary();
+    close();
+  };
+}
+
+// ==========================================
+// 1.5 API 页签：「链接」（全局预设）/「专用」（按功能指定预设）
+// ==========================================
+async function renderDedicatedApiPanel() {
+  const box = document.getElementById('api-dedicated-list');
+  if (!box || !window.apiRoutes) return;
+  const presets = await window.apiRoutes.listPresets();
+  const globalId = window.apiRoutes.getGlobalId();
+  let globalName = '';
+  for (let i = 0; i < presets.length; i++) if (Number(presets[i].id) === Number(globalId)) globalName = presets[i].name;
+  const followLabel = '跟随链接' + (globalName ? '（' + globalName + '）' : '（尚未设置全局预设）');
+
+  let html = '';
+  if (!presets.length) {
+    html += '<div style="font-size:11px; color:var(--text-secondary); padding:10px 0 14px;">还没有任何 API 预设。请先切到「链接」页新建并保存一个预设。</div>';
+  }
+  window.apiRoutes.FEATURES.forEach(function (f) {
+    const cur = window.apiRoutes.getFeatureId(f.key);
+    let opts = '<option value="0"' + (cur > 0 ? '' : ' selected') + '>' + escapeHtml(followLabel) + '</option>';
+    let curName = '';
+    presets.forEach(function (p) {
+      const sel = (Number(p.id) === cur) ? ' selected' : '';
+      if (Number(p.id) === cur) curName = p.name;
+      opts += '<option value="' + p.id + '"' + sel + '>' + escapeHtml(p.name) + (p.model ? '（' + escapeHtml(p.model) + '）' : '') + '</option>';
+    });
+    html +=
+      '<div class="form-group">' +
+        '<label>' + escapeHtml(f.label) + '</label>' +
+        '<select class="api-dedicated-select" data-feature="' + f.key + '">' + opts + '</select>' +
+        '<div style="font-size:10px; color:var(--text-secondary); margin-top:4px;">' +
+          escapeHtml(f.desc) + ' · 当前：' + escapeHtml(cur > 0 ? (curName || '专用预设已失效') : '跟随链接') +
+        '</div>' +
+      '</div>';
+  });
+  box.innerHTML = html;
+  box.querySelectorAll('.api-dedicated-select').forEach(function (sel) {
+    sel.onchange = function () {
+      const key = sel.getAttribute('data-feature');
+      window.apiRoutes.setFeatureId(key, sel.value);
+      if (typeof showToast === 'function') {
+        showToast(Number(sel.value) > 0
+          ? '已为「' + window.apiRoutes.featureLabel(key) + '」指定专用预设'
+          : '「' + window.apiRoutes.featureLabel(key) + '」已恢复为跟随链接');
+      }
+      renderDedicatedApiPanel();
+    };
+  });
+}
+
+function switchApiMode(mode) {
+  const link = document.getElementById('api-mode-link');
+  const ded = document.getElementById('api-mode-dedicated');
+  const m = mode === 'dedicated' ? 'dedicated' : 'link';
+  if (link) link.style.display = m === 'dedicated' ? 'none' : '';
+  if (ded) ded.style.display = m === 'dedicated' ? 'block' : 'none';
+  document.querySelectorAll('.api-mode-tab').forEach(function (t) {
+    const on = t.getAttribute('data-mode') === m;
+    t.classList.toggle('active', on);
+    t.classList.toggle('btn-outline', !on);
+  });
+  try { localStorage.setItem('api-mode-tab', m); } catch (e) {}
+  if (m === 'dedicated') renderDedicatedApiPanel();
+}
+window.switchApiMode = switchApiMode;
+window.renderDedicatedApiPanel = renderDedicatedApiPanel;
 
 document.getElementById("api-presets-select").onchange = (e) => {
   if (e.target.value) {
@@ -469,31 +745,46 @@ document.getElementById("btn-save-preset").onclick = async () => {
   }
   
   const presetData = { name, protocol, url, key, model, temperature };
+  // v1.5.20：把破限世界书挂载一起存进预设（切预设 = 切破限设定）
+  presetData.jailbreakEntryIds = (currentJailbreakEntryIds || []).map(n => Number(n));
   
   if (idVal) {
     await db.api_presets.update(Number(idVal), presetData);
-    alert("预设更新成功");
+    showToast("预设已更新");
   } else {
     const newId = await db.api_presets.add(presetData);
-    alert("新预设添加成功");
+    showToast("新预设已添加");
     localStorage.setItem("global_api_preset_id", newId);
   }
   loadPresetsList();
 };
 
+// 破限选择器入口
+(function bindJailbreakPicker() {
+  const btn = document.getElementById("btn-api-jailbreak-pick");
+  if (btn) btn.onclick = () => openJailbreakPicker();
+  // 首次进入 API 页时渲染一次空态摘要
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => renderJailbreakSummary());
+  } else {
+    renderJailbreakSummary();
+  }
+})();
+
 document.getElementById("btn-apply-global").onclick = async () => {
   const select = document.getElementById("api-presets-select");
   const idVal = select.value;
   if (!idVal) {
-    alert("请先保存或选择一个预设进行应用");
+    showToast("请先保存或选择一个预设进行应用");
     return;
   }
   localStorage.setItem("global_api_preset_id", idVal);
-  alert("当前 API 预设已成功设定为全局应用！");
+  // v1.5.20：应用全局预设时同步刷新破限索引（切预设即切破限设定）
+  try { if (typeof window.rebuildJailbreakPresetIndex === 'function') await window.rebuildJailbreakPresetIndex(); } catch (e) {}
+  showToast("当前 API 预设已成功设定为全局应用");
 };
 
-document.getElementById("btn-delete-preset").onclick = async () => {
-  const select = document.getElementById("api-presets-select");
+document.getElementById("btn-delete-preset").onclick = async () => {  const select = document.getElementById("api-presets-select");
   const idVal = select.value;
   if (!idVal) {
     alert("请先选择一个预设进行删除");
@@ -608,16 +899,20 @@ document.getElementById("btn-test-api").onclick = async () => {
 // ==========================================
 function loadBeautifyForm() {
   const bgUrl = localStorage.getItem("beautify-wallpaper") || "";
-  document.getElementById("beautify-bg-url").value = bgUrl.startsWith("data:") ? "[本地上传背景]" : bgUrl;
-  
-  // 渲染壁纸预览
+  const isLocalBg = bgUrl.startsWith("data:") || bgUrl === "asset:wallpaper";
+  document.getElementById("beautify-bg-url").value = isLocalBg ? "[本地上传背景]" : bgUrl;
+
+  // 渲染壁纸预览（新版壁纸存在 IndexedDB，需要异步取回）
   const bgPreview = document.getElementById("beautify-bg-preview");
-  if (bgPreview) {
-    if (bgUrl) {
-      bgPreview.innerHTML = `<img src="${bgUrl}" style="width:100%; height:100%; object-fit:cover;">`;
-    } else {
-      bgPreview.innerHTML = '<span style="font-size: 9px; color: var(--text-secondary); text-align: center;">无预览</span>';
-    }
+  const paintBgPreview = (src) => {
+    if (!bgPreview) return;
+    if (src) bgPreview.innerHTML = `<img src="${src}" style="width:100%; height:100%; object-fit:cover;">`;
+    else bgPreview.innerHTML = '<span style="font-size: 9px; color: var(--text-secondary); text-align: center;">无预览</span>';
+  };
+  if (bgUrl === "asset:wallpaper" && typeof window.tileAssetGet === "function") {
+    window.tileAssetGet("wallpaper").then((v) => paintBgPreview(v || ""));
+  } else {
+    paintBgPreview(bgUrl);
   }
 
   // 渲染不透明度数据
@@ -625,13 +920,20 @@ function loadBeautifyForm() {
   document.getElementById("beautify-dock-opacity").value = opacity;
   document.getElementById("beautify-dock-opacity-val").innerText = opacity;
 
+  // 渲染桌面放缩数据
+  const scale = localStorage.getItem("beautify-desktop-scale") || "100";
+  const scaleInputEl = document.getElementById("beautify-desktop-scale");
+  const scaleValEl = document.getElementById("beautify-desktop-scale-val");
+  if (scaleInputEl) scaleInputEl.value = scale;
+  if (scaleValEl) scaleValEl.innerText = scale;
+
   // 渲染回车上屏开关状态
   const enterSend = localStorage.getItem("settings-enter-send") === "true";
   const enterSendInput = document.getElementById("settings-enter-send-toggle");
   if (enterSendInput) enterSendInput.checked = enterSend;
 
-  // 循环载入并高精度绘制应用图标的平铺预览图 (加入 deeptalk, reader, forum, couples, encounter)
-  const apps = ["settings", "archive", "world_book", "chat", "deeptalk", "reader", "forum", "couples", "music", "shopping", "encounter", "quicktravel"];
+  // 循环载入并高精度绘制应用图标的平铺预览图 (加入 deeptalk, reader, forum, couples, encounter, heartgame, placeholder)
+  const apps = ["settings", "archive", "world_book", "chat", "deeptalk", "reader", "forum", "couples", "music", "shopping", "encounter", "quicktravel", "workbench", "yigui", "heartgame", "placeholder"];
   let customIcons = {};
   try {
     customIcons = JSON.parse(localStorage.getItem("beautify-custom-icons")) || {};
@@ -662,18 +964,52 @@ async function saveBeautifyConfig() {
 
   // 保存背景
   if (bgInput === "[本地上传背景]") {
-    if (tempBgBlob) {
-      const dataURL = await blobToDataURL(tempBgBlob);
-      localStorage.setItem("beautify-wallpaper", dataURL);
+    const src = tempBgFile || tempBgBlob;
+    if (!src) {
+      showToast("没有读取到壁纸文件，请重新选择");
+      return;
+    }
+    // 压一次就够：1280/q0.82 足够清晰，且存进 IndexedDB 不受 localStorage 5MB 限制
+    let dataURL = await encodeImageFile(src, 1280, 0.82);
+    if (!dataURL) dataURL = await encodeImageFile(src, 1080, 0.75);
+    if (!dataURL) {
+      showToast("壁纸读取失败，请换一张图片（HEIC 等格式可能不被支持）");
+      return;
+    }
+    let savedToDb = false;
+    if (typeof window.tileAssetSet === "function") {
+      savedToDb = await window.tileAssetSet("wallpaper", dataURL);
+    }
+    if (savedToDb) {
+      try { localStorage.setItem("beautify-wallpaper", "asset:wallpaper"); } catch (err) {}
+    } else {
+      // 数据库不可用时退回 localStorage：逐级压缩直到写得进去
+      const ladder = [[1080, 0.75], [900, 0.7], [720, 0.62], [600, 0.55]];
+      let saved = false;
+      for (let i = 0; i < ladder.length; i++) {
+        const d = await encodeImageFile(src, ladder[i][0], ladder[i][1]);
+        if (!d) break;
+        try { localStorage.setItem("beautify-wallpaper", d); saved = true; break; } catch (err) { /* 继续缩小 */ }
+      }
+      if (!saved) {
+        showToast("壁纸保存失败：存储空间不足，可在下方「图片管理」里清理后再试");
+        return;
+      }
     }
   } else if (bgInput) {
-    localStorage.setItem("beautify-wallpaper", bgInput);
+    try { localStorage.setItem("beautify-wallpaper", bgInput); }
+    catch (err) { showToast("壁纸保存失败：存储空间不足"); return; }
   } else {
     localStorage.removeItem("beautify-wallpaper");
+    if (typeof window.tileAssetDel === "function") window.tileAssetDel("wallpaper");
   }
 
   // 保存不透明度
   localStorage.setItem("beautify-dock-opacity", opacityVal);
+
+  // 保存桌面放缩
+  const scaleVal = document.getElementById("beautify-desktop-scale").value;
+  localStorage.setItem("beautify-desktop-scale", scaleVal);
 
   // 保存回车上屏开关状态
   const enterSendInput = document.getElementById("settings-enter-send-toggle");
@@ -681,8 +1017,10 @@ async function saveBeautifyConfig() {
     localStorage.setItem("settings-enter-send", enterSendInput.checked ? "true" : "false");
   }
 
-  // 依次读取平铺列表中的应用图标配置 (加入 deeptalk, reader, forum, couples, encounter)
-  const apps = ["settings", "archive", "world_book", "chat", "deeptalk", "reader", "forum", "couples", "music", "shopping", "encounter", "quicktravel"];
+  // 依次读取平铺列表中的应用图标配置 (加入 deeptalk, reader, forum, couples, encounter, heartgame, placeholder)
+  // 注：此行必须与 loadBeautifyForm() 里的 apps 列表保持一致 —— 早先漏了 heartgame / placeholder，
+  //     导致在设置里给「心动游戏」选的图标点保存后不落库（重进设置又变回默认）。
+  const apps = ["settings", "archive", "world_book", "chat", "deeptalk", "reader", "forum", "couples", "music", "shopping", "encounter", "quicktravel", "workbench", "yigui", "heartgame", "placeholder"];
   let customIcons = {};
   try {
     customIcons = JSON.parse(localStorage.getItem("beautify-custom-icons")) || {};
@@ -720,10 +1058,11 @@ function resetBeautifyConfig() {
     localStorage.removeItem("beautify-wallpaper");
     localStorage.removeItem("beautify-custom-icons");
     localStorage.removeItem("beautify-dock-opacity");
+    localStorage.removeItem("beautify-desktop-scale");
     localStorage.removeItem("settings-enter-send");
     document.getElementById("beautify-bg-url").value = "";
     
-    const apps = ["settings", "archive", "world_book", "chat", "deeptalk", "reader", "forum", "couples", "music", "shopping", "encounter", "quicktravel"];
+    const apps = ["settings", "archive", "world_book", "chat", "deeptalk", "reader", "forum", "couples", "music", "shopping", "encounter", "quicktravel", "workbench", "yigui"];
     apps.forEach(appId => {
       const input = document.getElementById(`beautify-icon-url-${appId}`);
       if (input) input.value = "";
@@ -734,6 +1073,289 @@ function resetBeautifyConfig() {
     if (window.loadDesktopLayout) loadDesktopLayout();
     loadBeautifyForm();
   }
+}
+
+// ==========================================
+// 2b. 全局字体管理（导入 .ttf / URL，多字体切换，恢复系统字体）
+// 字体数据存 IndexedDB（支持 15MB+），索引存 localStorage（小）
+// ==========================================
+const FONT_INDEX_KEY = "custom-fonts-index";   // localStorage: { fontName: {type:"data"|"url", src?} }
+const FONT_ACTIVE_KEY = "custom-fonts-active"; // localStorage: 当前激活的字体名（空=系统默认）
+const FONT_DB_NAME = "custom_fonts_db";
+const FONT_DB_STORE = "fonts";
+const FONT_FALLBACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif';
+
+// ---- IndexedDB 简易封装 ----
+function openFontDB() {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open(FONT_DB_NAME, 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(FONT_DB_STORE)) db.createObjectStore(FONT_DB_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (e) { reject(e); }
+  });
+}
+async function idbPut(key, value) {
+  const db = await openFontDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(FONT_DB_STORE, "readwrite");
+    tx.objectStore(FONT_DB_STORE).put(value, key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbGet(key) {
+  const db = await openFontDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(FONT_DB_STORE, "readonly");
+    const req = tx.objectStore(FONT_DB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbDelete(key) {
+  const db = await openFontDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(FONT_DB_STORE, "readwrite");
+    tx.objectStore(FONT_DB_STORE).delete(key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ---- 字体索引（localStorage，小数据） ----
+function loadFontIndex() {
+  try { return JSON.parse(localStorage.getItem(FONT_INDEX_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+function saveFontIndex(obj) { try { localStorage.setItem(FONT_INDEX_KEY, JSON.stringify(obj)); } catch (e) {} }
+
+// 存字体：.ttf 的 base64 数据存 IndexedDB（支持 15MB+），URL 直接存索引
+async function storeFont(name, data, isUrl) {
+  const idx = loadFontIndex();
+  if (isUrl) {
+    idx[name] = { type: "url", src: data };
+  } else {
+    await idbPut(name, data);
+    idx[name] = { type: "data" };
+  }
+  saveFontIndex(idx);
+}
+async function getFontSrc(name) {
+  const idx = loadFontIndex();
+  const info = idx[name];
+  if (!info) return null;
+  if (info.type === "url") return info.src;
+  return await idbGet(name);
+}
+async function deleteFontData(name) {
+  const idx = loadFontIndex();
+  if (idx[name] && idx[name].type === "data") {
+    try { await idbDelete(name); } catch (e) {}
+  }
+  delete idx[name];
+  saveFontIndex(idx);
+}
+
+// ---- 注入 @font-face 并应用（用 FontFace API 确保加载后再预览） ----
+async function applyActiveFont() {
+  const activeName = localStorage.getItem(FONT_ACTIVE_KEY) || "";
+  // 移除旧注入
+  const oldStyle = document.getElementById("custom-font-style");
+  if (oldStyle) oldStyle.remove();
+
+  if (!activeName) {
+    document.documentElement.style.removeProperty("--font-family-custom");
+    const preview = document.getElementById("font-preview-box");
+    if (preview) preview.style.fontFamily = "";
+    return;
+  }
+
+  const src = await getFontSrc(activeName);
+  if (!src) {
+    console.warn("[Font] 字体数据丢失:", activeName);
+    showToast("字体「" + activeName + "」数据丢失，请重新导入");
+    localStorage.removeItem(FONT_ACTIVE_KEY);
+    return;
+  }
+
+  const famName = "CustomFont_" + activeName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, "");
+
+  // 用 FontFace API 加载（加载成功后才预览，避免预览空白）
+  try {
+    // 先移除同名的旧 FontFace
+    try {
+      const existing = document.fonts;
+      for (const ff of existing) {
+        if (ff.family === famName) { existing.delete(ff); break; }
+      }
+    } catch (e) {}
+    const fontFace = new FontFace(famName, `url("${src}")`);
+    await fontFace.load();
+    document.fonts.add(fontFace);
+  } catch (e) {
+    console.warn("[Font] FontFace API 加载失败，回退到 @font-face CSS:", e);
+  }
+
+  // 注入 CSS（@font-face + 全局字体声明，缺字回退到系统字体）
+  // 关键：同时覆盖 --font-family 变量，确保所有使用 var(--font-family) 的元素生效
+  //       并显式声明 button/input/select/textarea，因为表单元素默认不继承 body 字体
+  const styleEl = document.createElement("style");
+  styleEl.id = "custom-font-style";
+  styleEl.textContent = `
+    @font-face { font-family: "${famName}"; src: url("${src}"); }
+    :root { --font-family: "${famName}", ${FONT_FALLBACK}; --font-family-custom: "${famName}", ${FONT_FALLBACK}; }
+    body, button, input, select, textarea, .app-icon span, .win-header h3, .menu-item, .btn { font-family: "${famName}", ${FONT_FALLBACK} !important; }
+  `;
+  document.head.appendChild(styleEl);
+
+  // 更新预览框
+  const preview = document.getElementById("font-preview-box");
+  if (preview) {
+    preview.style.fontFamily = `"${famName}", ${FONT_FALLBACK}`;
+    // 触发重绘确保预览刷新
+    preview.style.opacity = "0.5";
+    setTimeout(() => { preview.style.opacity = "1"; }, 200);
+  }
+}
+
+function refreshFontSelect() {
+  const select = document.getElementById("font-family-select");
+  if (!select) return;
+  const idx = loadFontIndex();
+  const active = localStorage.getItem(FONT_ACTIVE_KEY) || "";
+  select.innerHTML = '<option value="">-- 系统默认字体 --</option>';
+  Object.keys(idx).forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    if (name === active) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+function initGlobalFontPanel() {
+  const select = document.getElementById("font-family-select");
+  const btnReset = document.getElementById("btn-font-reset");
+  const btnDelete = document.getElementById("btn-font-delete");
+  const btnUpload = document.getElementById("btn-font-upload");
+  const fileInput = document.getElementById("file-font-upload");
+  const urlInput = document.getElementById("font-url-input");
+  const btnUrl = document.getElementById("btn-font-url");
+  const nameInput = document.getElementById("font-name-input");
+  if (!select) return;
+
+  refreshFontSelect();
+  applyActiveFont();
+
+  select.onchange = () => {
+    const v = select.value;
+    if (v) localStorage.setItem(FONT_ACTIVE_KEY, v);
+    else localStorage.removeItem(FONT_ACTIVE_KEY);
+    applyActiveFont();
+    showToast(v ? "已切换字体：" + v : "已恢复系统默认字体");
+  };
+  if (btnReset) btnReset.onclick = () => {
+    localStorage.removeItem(FONT_ACTIVE_KEY);
+    refreshFontSelect();
+    applyActiveFont();
+    showToast("已恢复系统默认字体");
+  };
+  if (btnDelete) btnDelete.onclick = async () => {
+    const name = select.value;
+    if (!name) { showToast("请先在下拉框中选择要删除的字体"); return; }
+    const ok = await new Promise(r => {
+      if (typeof window.showCustomConfirm === "function") window.showCustomConfirm("删除字体", "确定删除字体「" + name + "」吗？该字体的本地数据将被清除。", () => r(true), () => r(false));
+      else r(window.confirm("确定删除字体「" + name + "」吗？"));
+    });
+    if (!ok) return;
+    try {
+      await deleteFontData(name);
+      // 若删除的正是当前激活字体，清掉激活标记并回退系统默认
+      if ((localStorage.getItem(FONT_ACTIVE_KEY) || "") === name) {
+        localStorage.removeItem(FONT_ACTIVE_KEY);
+      }
+      refreshFontSelect();
+      await applyActiveFont();
+      showToast("字体「" + name + "」已删除");
+    } catch (e) {
+      showToast("删除失败：" + (e.message || e));
+    }
+  };
+  if (btnUpload && fileInput) {
+    btnUpload.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      // 检查大小（放宽到 15MB）
+      if (f.size > 15 * 1024 * 1024) { showToast("字体文件过大（超过 15MB）"); return; }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const name = (nameInput.value || f.name.replace(/\.ttf$/i, "")).trim() || "未命名字体";
+        try {
+          await storeFont(name, String(reader.result), false);
+          localStorage.setItem(FONT_ACTIVE_KEY, name);
+          refreshFontSelect();
+          await applyActiveFont();
+          showToast("字体「" + name + "」已导入并应用");
+        } catch (err) {
+          showToast("字体存储失败：" + (err.message || err));
+        }
+        if (nameInput) nameInput.value = "";
+      };
+      reader.onerror = () => { showToast("读取文件失败"); };
+      reader.readAsDataURL(f);
+      e.target.value = "";
+    };
+  }
+  if (btnUrl && urlInput) {
+    btnUrl.onclick = async () => {
+      const url = (urlInput.value || "").trim();
+      if (!url) { showToast("请输入字体 URL"); return; }
+      const name = (nameInput.value || ("URL字体" + Date.now())).trim();
+      try {
+        await storeFont(name, url, true);
+        localStorage.setItem(FONT_ACTIVE_KEY, name);
+        refreshFontSelect();
+        await applyActiveFont();
+        showToast("字体「" + name + "」已加载并应用");
+      } catch (err) {
+        showToast("字体加载失败：" + (err.message || err));
+      }
+      if (nameInput) nameInput.value = "";
+      urlInput.value = "";
+    };
+  }
+}
+
+// ==========================================
+// 2c. 恢复初始 UI（清空所有桌面样式、小组件与图标排布）
+// ==========================================
+function resetInitialUI() {
+  if (!confirm("确定恢复初始 UI 吗？将清空所有桌面壁纸、自定义图标、图标排布、Dock 排布、小组件、全局 CSS、自定义字体，恢复第一次打开此 PWA 时的主界面样式。")) return;
+  const keys = [
+    "beautify-wallpaper", "beautify-custom-icons", "beautify-dock-opacity",
+    "settings-enter-send", "desktop-layout-v3", "dock-layout-v3",
+    "placed-widgets-desktop", "placed-widgets-dock", "beautify-widgets",
+    "beautify-active-css", "custom-css-presets",
+    "beautify-icon-overrides", "desktop-rows", "desktop-page-size",
+    FONT_STORE_KEY, FONT_ACTIVE_KEY,
+    "cs_store_pol_img", "cs_store_top_img", "cs_store_dlg_img_1", "cs_store_dlg_img_2"
+  ];
+  keys.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  // 桌面卡片（时钟小字 / 照片 / 横幅）里的数据也一并清掉，回到第一次打开的状态
+  try {
+    Object.keys(localStorage).filter(k => k.indexOf("desktop-tile-") === 0).forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+  // 移除注入的字体样式
+  const styleEl = document.getElementById("custom-font-style");
+  if (styleEl) styleEl.remove();
+  document.documentElement.style.removeProperty("--font-family-custom");
+  alert("已恢复初始 UI，即将刷新页面…");
+  location.reload();
 }
 
 // ==========================================
@@ -1079,13 +1701,29 @@ function exportBeautifyPack() {
       wallpaper: localStorage.getItem("beautify-wallpaper"),
       customIcons: localStorage.getItem("beautify-custom-icons"),
       activeCss: localStorage.getItem("beautify-active-css"),
+      iconOverrides: localStorage.getItem("beautify-icon-overrides"),
+      desktopRows: localStorage.getItem("desktop-rows"),
+      desktopPageSize: localStorage.getItem("desktop-page-size"),
       cssPresets: localStorage.getItem("custom-css-presets"),
       placedWidgetsDesktop: localStorage.getItem("placed-widgets-desktop"),
       placedWidgetsDock: localStorage.getItem("placed-widgets-dock"),
       widgets: localStorage.getItem("beautify-widgets"),
-      dockOpacity: localStorage.getItem("beautify-dock-opacity")
+      dockOpacity: localStorage.getItem("beautify-dock-opacity"),
+      // 主页面图标排布与 Dock 排布（完整同步到新设备）
+      desktopLayout: localStorage.getItem("desktop-layout-v3"),
+      dockLayout: localStorage.getItem("dock-layout-v3"),
+      // 组件内用户上传的图片（拍立得/顶部照片条/对话头像等）
+      widgetImages: {
+        cs_store_pol_img: localStorage.getItem("cs_store_pol_img"),
+        cs_store_top_img: localStorage.getItem("cs_store_top_img"),
+        cs_store_dlg_img_1: localStorage.getItem("cs_store_dlg_img_1"),
+        cs_store_dlg_img_2: localStorage.getItem("cs_store_dlg_img_2")
+      },
+      // 全局字体
+      fontStore: localStorage.getItem("custom-fonts-store"),
+      fontActive: localStorage.getItem("custom-fonts-active")
     };
-    
+
     const jsonStr = JSON.stringify(pack, null, 2);
     const fileName = `desktop_beautify_pack_${Date.now()}.json`;
 
@@ -1123,15 +1761,31 @@ function importBeautifyPack(e) {
   reader.onload = (event) => {
     try {
       const data = JSON.parse(event.target.result);
-      if (confirm("导入美化包将覆盖现有的壁纸、自定义图标与组件库！确定继续吗？")) {
+      if (confirm("导入美化包将覆盖现有的壁纸、自定义图标、图标排布、组件与组件图片！确定继续吗？")) {
         if (data.wallpaper) localStorage.setItem("beautify-wallpaper", data.wallpaper);
         if (data.customIcons) localStorage.setItem("beautify-custom-icons", data.customIcons);
         if (data.activeCss) localStorage.setItem("beautify-active-css", data.activeCss);
+        if (data.iconOverrides !== undefined) localStorage.setItem("beautify-icon-overrides", data.iconOverrides);
+        if (data.desktopRows) localStorage.setItem("desktop-rows", data.desktopRows);
+        if (data.desktopPageSize) localStorage.setItem("desktop-page-size", data.desktopPageSize);
         if (data.cssPresets) localStorage.setItem("custom-css-presets", data.cssPresets);
         if (data.placedWidgetsDesktop) localStorage.setItem("placed-widgets-desktop", data.placedWidgetsDesktop);
         if (data.placedWidgetsDock) localStorage.setItem("placed-widgets-dock", data.placedWidgetsDock);
         if (data.widgets) localStorage.setItem("beautify-widgets", data.widgets);
         if (data.dockOpacity) localStorage.setItem("beautify-dock-opacity", data.dockOpacity);
+        if (data.desktopScale) localStorage.setItem("beautify-desktop-scale", data.desktopScale);
+        // 图标排布与 Dock 排布
+        if (data.desktopLayout) localStorage.setItem("desktop-layout-v3", data.desktopLayout);
+        if (data.dockLayout) localStorage.setItem("dock-layout-v3", data.dockLayout);
+        // 组件内图片
+        if (data.widgetImages && typeof data.widgetImages === "object") {
+          Object.keys(data.widgetImages).forEach(k => {
+            if (data.widgetImages[k]) localStorage.setItem(k, data.widgetImages[k]);
+          });
+        }
+        // 全局字体
+        if (data.fontStore) localStorage.setItem("custom-fonts-store", data.fontStore);
+        if (data.fontActive) localStorage.setItem("custom-fonts-active", data.fontActive);
 
         alert("美化包导入成功！");
         location.reload();
@@ -1294,7 +1948,23 @@ async function computeStorageUsage() {
     const widgetsStr = localStorage.getItem("beautify-widgets") || "";
     const momentSettingsStr = localStorage.getItem("moment_settings") || "";
 
-    const beautifyBaseBytes = new Blob([wallpaperStr + customIconsStr + cssPresetsStr + activeCssStr + widgetsStr + momentSettingsStr]).size;
+    // 桌面图片（IndexedDB assets）与衣柜图片也计入「图片」一栏
+    let assetsBytes = 0;
+    try {
+      if (db.assets) {
+        const assetRows = await db.assets.toArray();
+        assetsBytes = new Blob([JSON.stringify(assetRows.map((r) => r.data || ""))]).size;
+      }
+    } catch (e) {}
+    let wardrobeBytes = 0;
+    try {
+      if (db.ritual_wardrobe) {
+        const wr = await db.ritual_wardrobe.toArray();
+        wardrobeBytes = new Blob([JSON.stringify(wr.map((r) => r.image || ""))]).size;
+      }
+    } catch (e) {}
+
+    const beautifyBaseBytes = new Blob([wallpaperStr + customIconsStr + cssPresetsStr + activeCssStr + widgetsStr + momentSettingsStr]).size + assetsBytes + wardrobeBytes;
     const stickersBytes = new Blob([JSON.stringify(sticker_groups) + JSON.stringify(sticker_items)]).size;
     const totalBeautifyBytes = beautifyBaseBytes + stickersBytes;
 
@@ -1346,8 +2016,52 @@ async function computeStorageUsage() {
 }
 
 // === 大二进制 Blob / File 原生编解码转换层 ===
-function blobToDataURL(blob) {
-  return new Promise((resolve, reject) => {
+/** 把图片（File/Blob）按最长边 maxW、质量 q 压成 JPEG dataURL；失败返回 null
+ *  优先用桌面卡片那套解码器（createImageBitmap + blob URL，内存友好） */
+function encodeImageFile(file, maxW, q) {
+  if (typeof window.tileEncodeImage === "function") {
+    return window.tileEncodeImage(file, maxW).then(function (out) {
+      if (!out) return null;
+      if (q >= 0.8 || out.indexOf("data:image/jpeg") < 0) return out;
+      // 需要更低质量时，用已有的 dataURL 再压一次
+      return new Promise(function (resolve) {
+        const img = new Image();
+        img.onload = function () {
+          try {
+            const cv = document.createElement("canvas");
+            cv.width = img.width; cv.height = img.height;
+            cv.getContext("2d").drawImage(img, 0, 0);
+            resolve(cv.toDataURL("image/jpeg", q));
+          } catch (e) { resolve(out); }
+        };
+        img.onerror = function () { resolve(out); };
+        img.src = out;
+      });
+    });
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = (evt) => { img.src = evt.target.result; };
+    img.onerror = () => resolve(null);
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(cv.toDataURL("image/jpeg", q));
+      } catch (e) { resolve(null); }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function blobToDataURL(blob) {  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
@@ -1493,6 +2207,8 @@ async function exportBackup() {
           music_playlists: db.music_playlists ? await db.music_playlists.toArray() : [],
           music_songs: db.music_songs ? await db.music_songs.toArray() : [],
           music_logs: db.music_logs ? await db.music_logs.toArray() : [],
+          chat_archives: db.chat_archives ? await db.chat_archives.toArray() : [],
+          dialogue_vectors: db.dialogue_vectors ? await db.dialogue_vectors.toArray() : [],
           localStorage: {
         global_api_preset_id: localStorage.getItem("global_api_preset_id"),
         active_me_id: localStorage.getItem("active_me_id"),
@@ -1503,11 +2219,15 @@ async function exportBackup() {
         beautifyWallpaper: localStorage.getItem("beautify-wallpaper"),
         customIcons: localStorage.getItem("beautify-custom-icons"),
         activeCss: localStorage.getItem("beautify-active-css"),
+        iconOverrides: localStorage.getItem("beautify-icon-overrides"),
+        desktopRows: localStorage.getItem("desktop-rows"),
+        desktopPageSize: localStorage.getItem("desktop-page-size"),
         cssPresets: localStorage.getItem("custom-css-presets"),
         placedWidgetsDesktop: localStorage.getItem("placed-widgets-desktop"),
         placedWidgetsDock: localStorage.getItem("placed-widgets-dock"),
         widgets: localStorage.getItem("beautify-widgets"),
-        dockOpacity: localStorage.getItem("beautify-dock-opacity")
+        dockOpacity: localStorage.getItem("beautify-dock-opacity"),
+        desktopScale: localStorage.getItem("beautify-desktop-scale")
       }
     };
     
@@ -1599,7 +2319,8 @@ async function performImportTransaction(rawData) {
     db.groups, db.group_members, db.group_polls,
     db.table('couples_schedules'), db.table('couples_albums'), db.table('couples_journals'), db.table('couples_whispers'),
     db.mcp_servers, db.cot_presets, db.prompt_presets,
-    db.music_playlists, db.music_songs, db.music_logs
+    db.music_playlists, db.music_songs, db.music_logs,
+    db.chat_archives, db.dialogue_vectors
   ], async () => {
     if (data.api_presets) {
       await db.api_presets.clear();
@@ -1802,6 +2523,14 @@ async function performImportTransaction(rawData) {
           await db.music_logs.clear();
           await db.music_logs.bulkAdd(data.music_logs);
         }
+        if (data.chat_archives && db.chat_archives) {
+          await db.chat_archives.clear();
+          await db.chat_archives.bulkAdd(data.chat_archives);
+        }
+        if (data.dialogue_vectors && db.dialogue_vectors) {
+          await db.dialogue_vectors.clear();
+          await db.dialogue_vectors.bulkAdd(data.dialogue_vectors);
+        }
       });
   
   if (data.localStorage) {
@@ -1811,11 +2540,18 @@ async function performImportTransaction(rawData) {
       beautifyWallpaper: "beautify-wallpaper",
       customIcons: "beautify-custom-icons",
       activeCss: "beautify-active-css",
+      iconOverrides: "beautify-icon-overrides",
+      desktopRows: "desktop-rows",
+      desktopPageSize: "desktop-page-size",
       cssPresets: "custom-css-presets",
       placedWidgetsDesktop: "placed-widgets-desktop",
       placedWidgetsDock: "placed-widgets-dock",
       widgets: "beautify-widgets",
-      dockOpacity: "beautify-dock-opacity"
+      dockOpacity: "beautify-dock-opacity",
+      desktopScale: "beautify-desktop-scale",
+      readerPreferences: "reader_preferences",
+      customFontsIndex: "custom-fonts-index",
+      customFontsActive: "custom-fonts-active"
     };
 
     Object.keys(data.localStorage).forEach(k => {
@@ -2059,6 +2795,184 @@ async function compressImageBase64(source, maxWidth = 200, quality = 0.75, force
   });
 }
 window.compressImageBase64 = compressImageBase64;
+
+// ==========================================
+// 图片管理：列出所有地方的图片（缩略图 + 大小），可多选删除
+// 覆盖 localStorage（壁纸 / 自定义图标 / 组件图）、IndexedDB（桌面卡片图 / 衣柜 / 头像）
+// ==========================================
+const IMG_LABELS = {
+  "beautify-wallpaper": "桌面壁纸",
+  "beautify-custom-icons": "自定义应用图标",
+  "cs_store_top_img": "组件图 · 顶部照片条",
+  "cs_store_pol_img": "组件图 · 拍立得",
+  "cs_store_dlg_img_1": "组件图 · 对话头像 1",
+  "cs_store_dlg_img_2": "组件图 · 对话头像 2"
+};
+const ASSET_LABELS = {
+  "wallpaper": "桌面壁纸",
+  "banner-main": "桌面横幅背景",
+  "photo-a": "桌面照片卡 · 左上",
+  "photo-b": "桌面照片卡 · 右下",
+  "photo-c": "桌面照片卡 · 竖版"
+};
+function humanSize(n) {
+  const bytes = Math.round((n || 0) * 0.75);   // dataURL 大约 4/3 膨胀
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
+  return (bytes / 1024 / 1024).toFixed(2) + " MB";
+}
+/** 收集所有存着图片的地方 */
+async function collectStoredImages() {
+  const out = [];
+  const push = (o) => { if (o.data && String(o.data).indexOf("data:") === 0) out.push(o); };
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    const v = localStorage.getItem(k) || "";
+    if (v.indexOf("data:image") === 0) {
+      push({ src: "ls", key: k, data: v, label: IMG_LABELS[k] || (k.indexOf("desktop-tile-asset-") === 0 ? "桌面图片 · " + k.slice(20) : k) });
+    } else if (v.charAt(0) === "{" || v.charAt(0) === "[") {
+      try {
+        const obj = JSON.parse(v);
+        Object.keys(obj).forEach((f) => {
+          if (typeof obj[f] === "string" && obj[f].indexOf("data:image") === 0) {
+            push({ src: "ls-json", key: k, field: f, data: obj[f], label: (IMG_LABELS[k] || k) + " · " + f });
+          }
+        });
+      } catch (e) {}
+    }
+  }
+  try {
+    const rows = await db.assets.toArray();
+    rows.forEach((r) => push({ src: "asset", key: r.key, data: r.data, label: ASSET_LABELS[r.key] || ("桌面图片 · " + r.key) }));
+  } catch (e) {}
+  try {
+    const rows = await db.ritual_wardrobe.toArray();
+    rows.forEach((r) => push({ src: "wardrobe", id: r.id, data: r.image, label: "衣柜 · " + (r.name || "") }));
+  } catch (e) {}
+  try {
+    const rows = await db.archives.toArray();
+    rows.forEach((r) => push({ src: "avatar", id: r.id, data: r.avatar, label: "头像 · " + (r.name || "") }));
+  } catch (e) {}
+  return out;
+}
+async function deleteStoredImage(item) {
+  try {
+    if (item.src === "ls") {
+      localStorage.removeItem(item.key);
+    } else if (item.src === "ls-json") {
+      const obj = JSON.parse(localStorage.getItem(item.key) || "{}");
+      delete obj[item.field];
+      localStorage.setItem(item.key, JSON.stringify(obj));
+    } else if (item.src === "asset") {
+      if (typeof window.tileAssetDel === "function") await window.tileAssetDel(item.key);
+      if (item.key === "wallpaper") localStorage.removeItem("beautify-wallpaper");
+    } else if (item.src === "wardrobe") {
+      await db.ritual_wardrobe.update(item.id, { image: "" });
+    } else if (item.src === "avatar") {
+      await db.archives.update(item.id, { avatar: "" });
+    }
+    return true;
+  } catch (e) {
+    console.warn("[图片管理] 删除失败:", e);
+    return false;
+  }
+}
+async function openImageManager() {
+  const mask = document.createElement("div");
+  mask.className = "imgmgr-mask";
+  mask.style.cssText = "position:fixed;inset:0;z-index:100950;background:rgba(15,23,42,.46);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center;";
+  mask.innerHTML =
+    '<div class="imgmgr-card" style="width:100%;max-width:440px;max-height:88vh;background:#fff;border-radius:22px 22px 0 0;display:flex;flex-direction:column;overflow:hidden;">' +
+      '<div style="padding:14px 16px 10px;border-bottom:1px solid #eef2f7;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>' +
+          '<div style="flex:1;font-size:15px;font-weight:800;color:#1e293b;">图片管理</div>' +
+          '<button id="imgmgr-close" style="border:none;background:#f1f5f9;border-radius:9px;padding:6px 10px;color:#64748b;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">关闭</button>' +
+        '</div>' +
+        '<div id="imgmgr-summary" style="font-size:11.5px;color:#64748b;margin-top:6px;">正在统计…</div>' +
+      '</div>' +
+      '<div id="imgmgr-list" style="flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"></div>' +
+      '<div style="padding:10px 14px calc(14px + env(safe-area-inset-bottom,0px));border-top:1px solid #eef2f7;display:flex;gap:8px;align-items:center;">' +
+        '<button id="imgmgr-all" style="padding:10px 14px;border:1.5px solid #e2e8f0;background:#fff;border-radius:11px;font-size:12px;font-weight:800;color:#475569;cursor:pointer;font-family:inherit;">全选</button>' +
+        '<div style="flex:1;font-size:11.5px;color:#94a3b8;" id="imgmgr-sel">未选中</div>' +
+        '<button id="imgmgr-del" style="padding:10px 16px;border:none;background:#ef4444;border-radius:11px;font-size:12.5px;font-weight:800;color:#fff;cursor:pointer;font-family:inherit;">删除选中</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(mask);
+  const listEl = mask.querySelector("#imgmgr-list");
+  const sumEl = mask.querySelector("#imgmgr-summary");
+  const selEl = mask.querySelector("#imgmgr-sel");
+  const close = () => mask.remove();
+  mask.querySelector("#imgmgr-close").onclick = close;
+  mask.onclick = (e) => { if (e.target === mask) close(); };
+
+  let items = [];
+  let selected = new Set();
+  const refreshSel = () => {
+    const n = selected.size;
+    let size = 0;
+    selected.forEach((i) => { size += items[i].data.length; });
+    selEl.textContent = n ? "已选 " + n + " 张 · " + humanSize(size) : "未选中";
+  };
+  const render = () => {
+    listEl.innerHTML = items.map((it, i) => {
+      const on = selected.has(i);
+      return '<div class="imgmgr-item" data-i="' + i + '" style="position:relative;border-radius:12px;overflow:hidden;background:#f8fafc;border:1.5px solid ' + (on ? "#7c3aed" : "#eef2f7") + ';cursor:pointer;box-sizing:border-box;">' +
+        '<div style="width:100%;aspect-ratio:1/1;overflow:hidden;background:#f1f5f9;display:flex;align-items:center;justify-content:center;">' +
+          '<img src="' + it.data + '" style="width:100%;height:100%;object-fit:cover;display:block;">' +
+        '</div>' +
+        '<div style="padding:5px 6px;">' +
+          '<div style="font-size:10px;font-weight:700;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (it.label || "") + '</div>' +
+          '<div style="font-size:9.5px;color:#94a3b8;">' + humanSize(it.data.length) + '</div>' +
+        '</div>' +
+        '<div style="position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:' + (on ? "#7c3aed" : "rgba(255,255,255,.86)") + ';border:1.5px solid ' + (on ? "#7c3aed" : "#cbd5e1") + ';">' +
+          (on ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>' : '') +
+        '</div>' +
+      '</div>';
+    }).join("");
+    listEl.querySelectorAll(".imgmgr-item").forEach((el) => {
+      el.onclick = () => {
+        const i = Number(el.getAttribute("data-i"));
+        if (selected.has(i)) selected.delete(i); else selected.add(i);
+        render(); refreshSel();
+      };
+    });
+  };
+  const load = async () => {
+    items = await collectStoredImages();
+    selected = new Set();
+    let total = 0;
+    items.forEach((it) => { total += it.data.length; });
+    sumEl.textContent = items.length ? ("共 " + items.length + " 张图片，约 " + humanSize(total) + "（点图选择，再点「删除选中」）") : "没有找到图片";
+    render(); refreshSel();
+  };
+  mask.querySelector("#imgmgr-all").onclick = () => {
+    if (selected.size === items.length) selected = new Set();
+    else items.forEach((_, i) => selected.add(i));
+    render(); refreshSel();
+  };
+  mask.querySelector("#imgmgr-del").onclick = async () => {
+    if (!selected.size) { showToast("先点选要删除的图片"); return; }
+    const list = Array.from(selected).map((i) => items[i]);
+    const ok = await new Promise((resolve) => {
+      if (typeof window.showCustomConfirm === "function") {
+        window.showCustomConfirm("删除选中的图片", "将删除 " + list.length + " 张图片（约 " + humanSize(list.reduce((a, b) => a + b.data.length, 0)) + "）。被删的图片在对应位置会变成空位，可重新上传。", () => resolve(true), () => resolve(false));
+      } else resolve(true);
+    });
+    if (!ok) return;
+    let done = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (await deleteStoredImage(list[i])) done++;
+    }
+    showToast("已删除 " + done + " 张图片");
+    if (typeof window.applyGlobalSettingsOnLoad === "function") window.applyGlobalSettingsOnLoad();
+    if (typeof window.loadDesktopLayout === "function") window.loadDesktopLayout();
+    await load();
+    if (typeof computeStorageUsage === "function") computeStorageUsage();
+  };
+  await load();
+}
+window.openImageManager = openImageManager;
 
 // 引擎 1：全库大图与历史头像无损压实引擎 (全量覆盖档案、会话、群组、论坛、表情包与聊天卡片)
 async function optimizeImagesAndAvatars() {

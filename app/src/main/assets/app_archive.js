@@ -4,11 +4,15 @@ let isArchiveInitialized = false;
 let pendingArchiveLockface = []; // 待保存的档案馆锁脸 dataURL 数组（生图锁脸正脸照片）
 
 // 二进制 Blob 转换为极速内存临时 URL 的渲染器（彻底解决 Base64 卡顿） [2]
-function resolveAvatar(avatar) {
+function resolveAvatar(avatar, name) {
   if (!avatar) {
-    // 关键修复：SVG 内部属性必须用单引号，否则双引号会提前闭合 <img src="..."> 的 src 属性，
-    // 导致头像显示为破损图片，且剩余 SVG 标记（含 > 字符）泄漏到页面，造成名字带残破 > 字样
-    return "data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><circle cx='50' cy='50' r='50' fill='%23cbd5e1'/><text x='50' y='62' font-size='50' text-anchor='middle' fill='%2394a3b8' font-family='sans-serif'>人</text></svg>";
+    // 默认头像取角色名首字 + 哈希配色，而非统一的"人"字
+    const ch = String(name || '').charAt(0) || '人';
+    const colors = ['#3b82f6', '#0f766e', '#8b5cf6', '#e11d48', '#b45309', '#0891b2', '#be185d', '#4f46e5'];
+    const color = colors[name ? name.charCodeAt(0) % colors.length : 0];
+    return "data:image/svg+xml;utf8," + encodeURIComponent(
+      `<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><circle cx='50' cy='50' r='50' fill='${color}'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='#fff' font-family='sans-serif' font-weight='700'>${ch}</text></svg>`
+    );
   }
   if (avatar instanceof Blob) {
     return URL.createObjectURL(avatar); // 毫秒级内存地址转换
@@ -63,6 +67,7 @@ function initArchiveApp() {
       const group = document.getElementById("archive-group").value.trim();
       const persona = document.getElementById("archive-persona").value.trim();
       const appearance = (document.getElementById("archive-appearance") ? document.getElementById("archive-appearance").value.trim() : "");
+      const gender = (document.getElementById("archive-gender") ? document.getElementById("archive-gender").value : "");
       const lockfaceImages = pendingArchiveLockface.slice();
       const urlAvatar = document.getElementById("archive-avatar-url").value.trim();
     const parentId = archiveCurrentTab === 'npc' ? Number(document.getElementById("archive-parent-id").value) : null;
@@ -87,6 +92,7 @@ function initArchiveApp() {
         nativeLanguage,
         group,
         persona,
+        gender,
         parentId,
         appearance,
         lockfaceImages
@@ -215,7 +221,7 @@ async function loadArchivesData() {
     return;
   }
 
-  const items = await db.archives.where('type').equals(archiveCurrentTab).toArray();
+  const items = (await db.archives.where('type').equals(archiveCurrentTab).toArray()).filter(a => !a.isSnapshot);
   if (items.length === 0) {
     container.innerHTML = `<p style="text-align:center;color:var(--text-secondary);font-size:13px;padding:40px 0;">暂无归档记录，请点击右上角添加</p>`;
     return;
@@ -247,7 +253,7 @@ async function loadArchivesData() {
       const card = document.createElement("div");
       card.className = "archive-card";
       card.innerHTML = `
-        <img class="card-avatar" src="${resolveAvatar(item.avatar)}" onerror="(typeof avatarFallback==='function'?avatarFallback:(window.avatarFallback||function(){}))(this)" />
+        <img class="card-avatar" src="${resolveAvatar(item.avatar, item.name)}" onerror="(typeof avatarFallback==='function'?avatarFallback:(window.avatarFallback||function(){}))(this, '${escapeHtml(item.name)}')" />
         <div class="card-info">
           <div class="card-name">${escapeHtml(item.name)}</div>
           <div class="card-desc">${escapeHtml(item.remark || '暂无备注')}</div>
@@ -282,6 +288,7 @@ async function openArchiveForm(editId = null) {
   document.getElementById("archive-remark").value = "";
   document.getElementById("archive-language").value = "";
   document.getElementById("archive-group").value = "";
+  if (document.getElementById("archive-gender")) document.getElementById("archive-gender").value = "";
   document.getElementById("archive-persona").value = "";
   if (document.getElementById("archive-appearance")) document.getElementById("archive-appearance").value = "";
   document.getElementById("archive-avatar-url").value = "";
@@ -306,7 +313,7 @@ async function openArchiveForm(editId = null) {
 
   if (isNpc) {
     document.getElementById("form-title").innerText = editId ? "编辑 NPC 设定" : "添加新 NPC";
-    const options = await db.archives.where('type').anyOf(['character', 'user']).toArray();
+    const options = (await db.archives.where('type').anyOf(['character', 'user']).toArray()).filter(a => !a.isSnapshot);
     const container = document.getElementById("npc-parent-selector-cards");
     container.innerHTML = "";
 
@@ -327,7 +334,7 @@ async function openArchiveForm(editId = null) {
         
         card.style.cssText = `display:flex; align-items:center; gap:10px; padding:8px; border-radius:8px; background:${isPreSelected ? '#f0fdf4' : '#ffffff'}; border:1.5px solid ${isPreSelected ? '#07c160' : 'var(--border)'}; cursor:pointer; transition:all 0.15s;`;
         card.innerHTML = `
-          <img src="${resolveAvatar(item.avatar)}" onerror="(typeof avatarFallback==='function'?avatarFallback:(window.avatarFallback||function(){}))(this)" style="width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0;">
+          <img src="${resolveAvatar(item.avatar, item.name)}" onerror="(typeof avatarFallback==='function'?avatarFallback:(window.avatarFallback||function(){}))(this, '${escapeHtml(item.name)}')" style="width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0;">
           <div style="flex:1; overflow:hidden; text-align:left;">
             <div style="font-size:12px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:4px;">
               <span>${escapeHtml(item.name)}</span>
@@ -364,6 +371,7 @@ async function openArchiveForm(editId = null) {
       document.getElementById("archive-remark").value = item.remark || "";
       document.getElementById("archive-language").value = item.nativeLanguage || "";
       document.getElementById("archive-group").value = item.group || "";
+      if (document.getElementById("archive-gender")) document.getElementById("archive-gender").value = item.gender || "";
       document.getElementById("archive-persona").value = item.persona || "";
       if (document.getElementById("archive-appearance")) document.getElementById("archive-appearance").value = item.appearance || "";
       // 回填锁脸正脸照片
@@ -433,37 +441,34 @@ function initArchiveImport() {
   const btnImport = document.getElementById("btn-archive-import");
   const fileImportDoc = document.getElementById("file-archive-import");
 
-  if (btnImport && fileImportDoc) {
-    btnImport.onclick = () => {
-      fileImportDoc.click();
-    };
+  if (!btnImport || !fileImportDoc) return;
 
-    // 处理 docx / txt 传统文件导入
-    fileImportDoc.onchange = async (e) => {
-      if (e.target.files.length > 0) {
-        const file = e.target.files[0];
-        showToast("正在解析角色设定文件...");
-        try {
-          let text = "";
-          if (file.name.endsWith(".docx")) {
-            text = await parseDocxText(file);
-          } else {
-            text = await readTxtFileSafe(file);
-          }
+  btnImport.onclick = () => { fileImportDoc.click(); };
 
-          await openArchiveForm();
-          const defaultName = file.name.substring(0, file.name.lastIndexOf('.')) || "新角色";
-          document.getElementById("archive-name").value = defaultName;
-          document.getElementById("archive-persona").value = text;
-          showToast(`成功导入设定「${file.name}」！`);
-        } catch(err) {
-          console.error(err);
-          showToast("解析设定文件失败: " + err.message);
+  fileImportDoc.onchange = async (e) => {
+    if (e.target.files.length > 0) {
+      const file = e.target.files[0];
+      showToast("正在解析角色设定文件...");
+      try {
+        let text = "";
+        if (file.name.endsWith(".docx")) {
+          text = await parseDocxText(file);
+        } else {
+          text = await readTxtFileSafe(file);
         }
-        fileImportDoc.value = "";
+
+        await openArchiveForm();
+        const defaultName = file.name.substring(0, file.name.lastIndexOf('.')) || "新角色";
+        document.getElementById("archive-name").value = defaultName;
+        document.getElementById("archive-persona").value = text;
+        showToast(`成功导入设定「${file.name}」！`);
+      } catch(err) {
+        console.error(err);
+        showToast("解析设定文件失败: " + err.message);
       }
-    };
-  }
+      fileImportDoc.value = "";
+    }
+  };
 }
 
 // 动态异步加载 JSZip 库，保障 Word 文本解压正常进行
@@ -617,7 +622,7 @@ async function renderRelCandidateDrawer() {
   const container = document.getElementById("rel-candidate-list");
   container.innerHTML = "";
 
-  const archives = await db.archives.toArray();
+  const archives = (await db.archives.toArray()).filter(a => !a.isSnapshot);
   const addedIds = graphNodes.map(n => n.id);
 
   archives.forEach(arc => {
@@ -625,7 +630,7 @@ async function renderRelCandidateDrawer() {
     const item = document.createElement("div");
     item.style.cssText = `display:flex; flex-direction:column; align-items:center; padding:8px 4px; border-radius:10px; background:${isAdded ? '#f1f5f9' : '#fff'}; border:1px solid ${isAdded ? '#cbd5e1' : 'var(--border)'}; opacity:${isAdded ? '0.5' : '1'}; cursor:${isAdded ? 'not-allowed' : 'pointer'}; text-align:center; transition:all 0.15s;`;
     item.innerHTML = `
-      <img src="${resolveAvatar(arc.avatar)}" onerror="(typeof avatarFallback==='function'?avatarFallback:(window.avatarFallback||function(){}))(this)" style="width:36px; height:32px; border-radius:50%; object-fit:cover; margin-bottom:4px;">
+      <img src="${resolveAvatar(arc.avatar, arc.name)}" onerror="(typeof avatarFallback==='function'?avatarFallback:(window.avatarFallback||function(){}))(this, '${escapeHtml(arc.name)}')" style="width:36px; height:32px; border-radius:50%; object-fit:cover; margin-bottom:4px;">
       <span style="font-size:10px; font-weight:700; color:var(--text-primary); max-width:80px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(arc.name)}</span>
     `;
 
@@ -726,7 +731,7 @@ async function renderRelStage() {
 
     el.innerHTML = `
       <div style="position:relative; width:44px; height:44px;">
-        <img src="${resolveAvatar(arc.avatar)}" onerror="(typeof avatarFallback==='function'?avatarFallback:(window.avatarFallback||function(){}))(this)" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2.5px solid ${isSelected ? '#ec4899' : '#ffffff'}; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+        <img src="${resolveAvatar(arc.avatar, arc.name)}" onerror="(typeof avatarFallback==='function'?avatarFallback:(window.avatarFallback||function(){}))(this, '${escapeHtml(arc.name)}')" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2.5px solid ${isSelected ? '#ec4899' : '#ffffff'}; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
         <div onclick="event.stopPropagation(); removeNodeFromGraph(${node.id})" title="从关系网中移除" style="position:absolute; top:-4px; right:-4px; width:16px; height:16px; background:#ef4444; color:#fff; border-radius:50%; font-size:10px; font-weight:bold; display:flex; align-items:center; justify-content:center; cursor:pointer;">×</div>
       </div>
       <span style="font-size:10px; font-weight:800; color:#1e293b; background:rgba(255,255,255,0.9); padding:1px 6px; border-radius:8px; margin-top:2px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.1);">${escapeHtml(arc.name)}</span>

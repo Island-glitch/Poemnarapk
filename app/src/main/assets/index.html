@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="chat.css">
+  <link rel="stylesheet" href="group.css">
   <link rel="stylesheet" href="status.css">
   <link rel="stylesheet" href="sticker.css">
   <link rel="stylesheet" href="deeptalk.css">
@@ -25,6 +26,8 @@
   <link rel="stylesheet" href="forum.css">
   <link rel="stylesheet" href="couples.css">
   <link rel="stylesheet" href="music.css">
+  <link rel="stylesheet" href="assistant.css">
+  <link rel="stylesheet" href="app_miniprogram.css">
   <script src="https://unpkg.com/dexie@4.0.1/dist/dexie.js"></script>
   <style>
     /* 底部展开栏跑马灯左右横滑及圆点指示器专属样式 */
@@ -77,9 +80,66 @@
       background-color: #9ca3af;
     }
   </style>
+  <script src="./app_local_deploy.js" defer></script>
+  <!-- 开屏启动动画样式（禁止 emoji：全部为通用路径 SVG + 进度条） -->
+  <style id="boot-splash-style">
+    #boot-splash {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 100000;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(168deg, #fbfbfa 0%, #f5f6f8 58%, #eef1f5 100%);
+      transition: opacity 0.44s ease, transform 0.44s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #boot-splash.boot-splash-hide { opacity: 0; transform: scale(1.045); pointer-events: none; }
+    #boot-splash .boot-splash-inner { display: flex; flex-direction: column; align-items: center; width: 220px; }
+    #boot-splash .boot-splash-logo {
+      width: 68px; height: 68px; color: #334155;
+      animation: bootLogoIn 0.66s cubic-bezier(0.2, 0.8, 0.25, 1) both,
+                 bootLogoWrite 2.6s ease-in-out 0.66s infinite;
+    }
+    #boot-splash .boot-splash-title {
+      margin-top: 18px; font-size: 17px; font-weight: 800; letter-spacing: 3px; color: #1e293b;
+      animation: bootFadeUp 0.5s ease-out 0.18s both;
+    }
+    #boot-splash .boot-splash-sub {
+      margin-top: 7px; font-size: 11px; font-weight: 600; letter-spacing: 1px; color: #94a3b8;
+      animation: bootFadeUp 0.5s ease-out 0.3s both;
+    }
+    #boot-splash .boot-splash-bar {
+      margin-top: 24px; width: 152px; height: 3px; border-radius: 99px;
+      background: rgba(51, 65, 85, 0.10); overflow: hidden;
+      animation: bootFadeUp 0.5s ease-out 0.4s both;
+    }
+    #boot-splash .boot-splash-bar > i {
+      display: block; height: 100%; width: 0; border-radius: 99px;
+      background: linear-gradient(90deg, #64748b, #1e88e5);
+      transition: width 0.26s ease-out;
+    }
+    @keyframes bootLogoIn { from { opacity: 0; transform: translateY(10px) scale(0.9); } to { opacity: 1; transform: none; } }
+    @keyframes bootLogoWrite { 0%, 100% { transform: translateX(0) rotate(0deg); opacity: 1; } 50% { transform: translateX(-2px) rotate(-2.5deg); opacity: 0.88; } }
+    @keyframes bootFadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  </style>
 </head>
 <body>
-  <div id="phone-container" style="position: relative;">
+  <!-- 开屏启动动画：羽毛笔（契合「叙事诗」）+ 进度条 -->
+  <div id="boot-splash">
+    <div class="boot-splash-inner">
+      <svg class="boot-splash-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <!-- 羽毛（通用 feather 轮廓） -->
+        <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/>
+        <!-- 笔杆 -->
+        <line x1="16" y1="8" x2="2" y2="22"/>
+        <!-- 羽毛分叉 -->
+        <line x1="17.5" y1="15" x2="9" y2="15"/>
+        <!-- 落笔的一道笔锋 -->
+        <path d="M2.2 21.8c1.4-.7 2.9-.7 4.3 0"/>
+      </svg>
+      <div class="boot-splash-title">叙事诗小手机</div>
+      <div class="boot-splash-sub">正在唤醒你的手机</div>
+      <div class="boot-splash-bar"><i id="boot-splash-bar-fill"></i></div>
+    </div>
+  </div>
+<div id="phone-container" style="position: relative;">
     <!-- 微信/iOS 网页全页面顶层悬浮灵动岛 & 310x340px 大听歌卡片 -->
     <div id="dynamic-island-container" class="collapsed" style="display:none;" onclick="musicSystem.toggleIslandExpand()">
       <!-- 听歌卡片专属毛玻璃弥散背景 -->
@@ -358,6 +418,11 @@
                 <span>向量化记忆设置</span>
                 <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
               </div>
+              <!-- 新增：本地部署入口（二级面板由 app_router.js 懒注入） -->
+              <div class="menu-item" onclick="openSettingsLv2('local-deploy')">
+                <span>本地部署</span>
+                <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+              </div>
               <div class="menu-item" onclick="openSettingsLv2('beautify')">
                 <span>桌面美化设置</span>
                 <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
@@ -381,6 +446,11 @@
               </div>
               <div class="menu-item" onclick="openSettingsLv2('data')">
                 <span>数据管理</span>
+                <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+              </div>
+              <!-- 新增：悬浮窗设置入口（二级面板由 app_router.js 懒注入，不写入 index.html） -->
+              <div class="menu-item" onclick="openSettingsLv2('floating-widget')">
+                <span>悬浮窗</span>
                 <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
               </div>
               <div class="menu-item" onclick="openSettingsLv2('force-update')">
@@ -408,6 +478,10 @@
                 <span>更新日志</span>
                 <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
               </div>
+              <div class="menu-item" onclick="openSettingsLv2('about')">
+                <span>关于本机</span>
+                <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+              </div>
             </div>
 
           <!-- 二级：更新日志 -->
@@ -415,8 +489,42 @@
             <div id="changelog-content" style="padding:4px 0;"></div>
           </div>
 
+          <!-- 二级：关于本机 -->
+          <div id="settings-lv2-about" class="settings-lv2-panel" style="display:none;">
+            <div style="padding:4px 0;">
+              <div class="mcp-card" style="background:#ffffff; border:1.5px solid var(--border); border-radius:12px; padding:14px; box-shadow: var(--shadow-sm); margin-bottom:12px; text-align:left;">
+                <h4 style="margin:0 0 10px 0; font-size:13px; color:var(--text-primary); font-weight:700;">关于本机 · 小手机</h4>
+                <p style="margin:0 0 8px; font-size:12px; color:var(--text-secondary); line-height:1.6;">这是一款完全在本地运行的虚拟手机 / AI 陪伴应用，由开发者独立打造，所有对话、设定与记忆都存储在你自己的设备本地，不上传任何服务器。</p>
+                <p style="margin:0; font-size:12px; color:var(--text-secondary); line-height:1.6;">它不联网、不依赖云端，只在你的浏览器里安静运行，陪你聊天、记录与想象。</p>
+              </div>
+              <div class="mcp-card" style="background:#ffffff; border:1.5px solid var(--border); border-radius:12px; padding:14px; box-shadow: var(--shadow-sm); margin-bottom:12px; text-align:left;">
+                <h4 style="margin:0 0 10px 0; font-size:13px; color:var(--text-primary); font-weight:700;">开源与协议</h4>
+                <p style="margin:0 0 8px; font-size:12px; color:var(--text-secondary); line-height:1.6;">开源地址：<a href="https://github.com/Island-glitch/Poemnarapk" target="_blank" rel="noopener" style="color:var(--primary);">github.com/Island-glitch/Poemnarapk</a></p>
+                <p style="margin:0; font-size:12px; color:var(--text-secondary); line-height:1.6;">开源协议：<b>MIT</b>（可自由使用、修改与分发，需保留版权声明）。</p>
+              </div>
+              <div class="mcp-card" style="background:#ffffff; border:1.5px solid var(--border); border-radius:12px; padding:14px; box-shadow: var(--shadow-sm); margin-bottom:12px; text-align:left;">
+                <h4 style="margin:0 0 10px 0; font-size:13px; color:var(--text-primary); font-weight:700;">数据存储与合规须知</h4>
+                <p style="margin:0 0 8px; font-size:12px; color:var(--text-secondary); line-height:1.6;">一切数据均存储于你的本地设备（浏览器 IndexedDB），本应用不提供任何 API 功能，所有内容由本地数据驱动。</p>
+                <p style="margin:0 0 8px; font-size:12px; color:var(--text-secondary); line-height:1.6;">本应用仅为个人娱乐与创作工具，使用过程中产生的一切责任由使用者本人承担；请务必在合法合规的前提下使用，勿用于任何违法违规场景。</p>
+                <p style="margin:0; font-size:12px; color:var(--text-secondary); line-height:1.6;">依据《人工智能拟人化互动服务管理暂行办法》（俗称 715 新规），本应用已落实 AI 身份标识、未成年人保护、用户数据权利与清晰退出路径等要求，保障你的知情权与选择权。</p>
+              </div>
+            </div>
+          </div>
+
           <!-- 二级：API 设置 -->
           <div id="settings-lv2-api" class="settings-lv2-panel" style="display:none;">
+            <!-- 页签：链接（全局预设）/ 专用（按功能单独指定预设） -->
+            <div class="form-group">
+              <label>预设用途</label>
+              <div id="api-mode-tabs" style="display:flex; gap:8px; margin-bottom:4px;">
+                <button type="button" class="btn api-mode-tab active" data-mode="link" style="flex:1;">链接</button>
+                <button type="button" class="btn btn-outline api-mode-tab" data-mode="dedicated" style="flex:1;">专用</button>
+              </div>
+              <div style="font-size:10px; color:var(--text-secondary);">「链接」里保存的是全局预设；「专用」可让每个功能单独用某个预设，没选的自动跟随链接。</div>
+            </div>
+
+            <!-- ===== 链接：原有全局预设配置 ===== -->
+            <div id="api-mode-link">
             <div class="form-group">
               <label>配置预设</label>
               <div class="preset-row">
@@ -468,10 +576,32 @@
                 <span class="slider"></span>
               </label>
             </div>
+            <!-- 破限世界书挂载：每个 API 预设各自携带，切换预设即切换破限设定 -->
+            <div class="form-group" style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <label style="margin-bottom:0; font-weight:700; display:flex; align-items:center; gap:6px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                    <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6z"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+                  </svg> 挂载破限世界书
+                </label>
+                <button type="button" id="btn-api-jailbreak-pick" class="btn btn-outline" style="padding:6px 12px; font-size:11.5px; border-radius:10px; flex-shrink:0;">选择条目</button>
+              </div>
+              <div id="api-jailbreak-summary" style="margin-top:9px;"></div>
+              <div style="font-size:10px; color:var(--text-secondary); margin-top:7px; line-height:1.6;">选中的条目会作为**最高优先级设定**注入到本预设的**每一次**模型调用（聊天、总结、翻译、心声、朋友圈、反查、小剧场、桌宠、工作台…），确保各处破限一致。不选则不做任何注入。</div>
+            </div>
             <div class="form-actions">
               <button id="btn-test-api" class="btn btn-outline">测试连接</button>
               <button id="btn-save-preset" class="btn">保存预设</button>
               <button id="btn-apply-global" class="btn btn-primary">应用到全局</button>
+            </div>
+            </div>
+
+            <!-- ===== 专用：按功能指定预设（未选则跟随链接里的全局预设） ===== -->
+            <div id="api-mode-dedicated" style="display:none;">
+              <div id="api-dedicated-list"></div>
+              <div class="form-actions" style="margin-top:4px;">
+                <button id="btn-reset-dedicated" class="btn btn-outline" style="width:100%;">全部恢复为「跟随链接」</button>
+              </div>
             </div>
           </div>
 
@@ -482,6 +612,7 @@
               <div style="display: flex; gap: 8px;">
                 <select id="beautify-builtin-preset-select" style="flex: 1; height: 38px; border-radius: 8px; border: 1.5px solid var(--border); font-size: 12px; padding: 0 8px; background: #fff;">
                   <option value="">-- 选择内置UI预设 --</option>
+                  <option value="thin_autumn">薄秋（默认：大时钟 + 照片卡 + 圆形图标）</option>
                   <option value="clear_cool_summer">清透凉夏 (Ins拟物风)</option>
                 </select>
                 <button class="btn btn-primary" id="btn-apply-builtin-preset" style="padding: 0 14px; font-size: 12px; border-radius: 8px; font-weight: 700;">应用预设</button>
@@ -508,6 +639,13 @@
               <input type="range" id="beautify-dock-opacity" min="0" max="100" value="70">
             </div>
 
+            <!-- 新增：桌面整体大小放缩（解决部分手机型号图标缩小/Dock上移问题） -->
+            <div class="form-group" style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+              <label>桌面整体放缩 (50 - 150%: <span id="beautify-desktop-scale-val">100</span>%)</label>
+              <input type="range" id="beautify-desktop-scale" min="50" max="150" value="100" step="5">
+              <div style="font-size:11px; color:var(--text-secondary); margin-top:4px; line-height:1.4;">拖动滑块可整体放大或缩小桌面图标与 Dock 栏，解决部分手机型号图标过小或 Dock 栏上移的问题。</div>
+            </div>
+
             <!-- 新增：回车上屏开关 -->
             <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
               <label style="margin-bottom:0; font-weight:700;">回车上屏 (按 Enter 发送线上消息)</label>
@@ -518,8 +656,11 @@
             </div>
 
             <div class="form-group" style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
-              <label style="margin-bottom:10px; display:block;">自定义应用图标</label>
-              <div id="beautify-icons-list" style="display: flex; flex-direction: column; gap: 12px;">
+              <div id="beautify-icons-header" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; margin-bottom:10px;">
+                <label style="margin-bottom:0; display:block; font-weight:700; cursor:pointer;">自定义应用图标</label>
+                <button type="button" id="beautify-icons-toggle" class="btn btn-outline" style="padding:4px 12px; font-size:11px; border-radius:8px;">展开</button>
+              </div>
+              <div id="beautify-icons-list" style="display: none; flex-direction: column; gap: 12px;">
                 <!-- 设置 -->
                 <div class="beautify-icon-row" style="display: flex; gap: 12px; align-items: center; background: var(--surface); padding: 8px; border-radius: 12px; border: 1px solid var(--border);">
                   <div class="icon-preview-box" id="beautify-preview-settings" style="width: 44px; height: 44px; border-radius: 12px; border: 1.5px dashed var(--border); display: flex; align-items: center; justify-content: center; background: #f8fafc; flex-shrink: 0; overflow:hidden;"></div>
@@ -663,13 +804,84 @@
                     </div>
                   </div>
                 </div>
+                <!-- 工作台 -->
+                <div class="beautify-icon-row" style="display: flex; gap: 12px; align-items: center; background: var(--surface); padding: 8px; border-radius: 12px; border: 1px solid var(--border);">
+                  <div class="icon-preview-box" id="beautify-preview-workbench" style="width: 44px; height: 44px; border-radius: 12px; border: 1.5px dashed var(--border); display: flex; align-items: center; justify-content: center; background: #f8fafc; flex-shrink: 0; overflow:hidden;"></div>
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">工作台</span>
+                    <input type="text" class="beautify-icon-input" id="beautify-icon-url-workbench" placeholder="输入图标 URL" style="padding: 6px 10px; font-size: 11px;">
+                    <div style="display: flex; gap: 6px;">
+                      <button class="btn btn-outline btn-icon-upload-trigger" data-app="workbench" style="padding: 4px 8px; font-size: 10px; flex: 1; border-radius:6px;">上传本地图</button>
+                      <button class="btn btn-danger-outline btn-icon-reset-trigger" data-app="workbench" style="padding: 4px 8px; font-size: 10px; flex: 1; border-radius:6px;">恢复默认</button>
+                    </div>
+                  </div>
+                </div>
+                <!-- 仪轨 -->
+                <div class="beautify-icon-row" style="display: flex; gap: 12px; align-items: center; background: var(--surface); padding: 8px; border-radius: 12px; border: 1px solid var(--border);">
+                  <div class="icon-preview-box" id="beautify-preview-yigui" style="width: 44px; height: 44px; border-radius: 12px; border: 1.5px dashed var(--border); display: flex; align-items: center; justify-content: center; background: #f8fafc; flex-shrink: 0; overflow:hidden;"></div>
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">仪轨</span>
+                    <input type="text" class="beautify-icon-input" id="beautify-icon-url-yigui" placeholder="输入图标 URL" style="padding: 6px 10px; font-size: 11px;">
+                    <div style="display: flex; gap: 6px;">
+                      <button class="btn btn-outline btn-icon-upload-trigger" data-app="yigui" style="padding: 4px 8px; font-size: 10px; flex: 1; border-radius:6px;">上传本地图</button>
+                      <button class="btn btn-danger-outline btn-icon-reset-trigger" data-app="yigui" style="padding: 4px 8px; font-size: 10px; flex: 1; border-radius:6px;">恢复默认</button>
+                    </div>
+                  </div>
+                </div>
+                <!-- 心动游戏 -->
+                <div class="beautify-icon-row" style="display: flex; gap: 12px; align-items: center; background: var(--surface); padding: 8px; border-radius: 12px; border: 1px solid var(--border);">
+                  <div class="icon-preview-box" id="beautify-preview-heartgame" style="width: 44px; height: 44px; border-radius: 12px; border: 1.5px dashed var(--border); display: flex; align-items: center; justify-content: center; background: #f8fafc; flex-shrink: 0; overflow:hidden;"></div>
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">心动游戏</span>
+                    <input type="text" class="beautify-icon-input" id="beautify-icon-url-heartgame" placeholder="输入图标 URL" style="padding: 6px 10px; font-size: 11px;">
+                    <div style="display: flex; gap: 6px;">
+                      <button class="btn btn-outline btn-icon-upload-trigger" data-app="heartgame" style="padding: 4px 8px; font-size: 10px; flex: 1; border-radius:6px;">上传本地图</button>
+                      <button class="btn btn-danger-outline btn-icon-reset-trigger" data-app="heartgame" style="padding: 4px 8px; font-size: 10px; flex: 1; border-radius:6px;">恢复默认</button>
+                    </div>
+                  </div>
+                </div>
+                <!-- 占位图标 -->
+                <div class="beautify-icon-row" style="display: flex; gap: 12px; align-items: center; background: var(--surface); padding: 8px; border-radius: 12px; border: 1px solid var(--border);">
+                  <div class="icon-preview-box" id="beautify-preview-placeholder" style="width: 44px; height: 44px; border-radius: 12px; border: 1.5px dashed var(--border); display: flex; align-items: center; justify-content: center; background: #f8fafc; flex-shrink: 0; overflow:hidden;"></div>
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">占位图标</span>
+                    <input type="text" class="beautify-icon-input" id="beautify-icon-url-placeholder" placeholder="输入图标 URL" style="padding: 6px 10px; font-size: 11px;">
+                    <div style="display: flex; gap: 6px;">
+                      <button class="btn btn-outline btn-icon-upload-trigger" data-app="placeholder" style="padding: 4px 8px; font-size: 10px; flex: 1; border-radius:6px;">上传本地图</button>
+                      <button class="btn btn-danger-outline btn-icon-reset-trigger" data-app="placeholder" style="padding: 4px 8px; font-size: 10px; flex: 1; border-radius:6px;">恢复默认</button>
+                    </div>
+                  </div>
+                </div>
               </div>
               <!-- 全局单通道图标上传文件input -->
               <input type="file" id="file-beautify-icon-global" accept="image/*" style="display:none;">
             </div>
+            <!-- 全局字体板块 -->
+            <div class="form-group" style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+              <label style="margin-bottom:10px; display:block; font-weight:700;">全局字体</label>
+              <div id="font-preview-box" style="padding:14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); margin-bottom:10px; text-align:center; font-size:16px; color:var(--text-primary);">永和九年，岁在癸丑 The quick brown fox</div>
+              <div style="display:flex; gap:8px; margin-bottom:10px;">
+                <select id="font-family-select" style="flex:1; height:38px; border-radius:8px; border:1.5px solid var(--border); font-size:12px; padding:0 8px; background:#fff;">
+                  <option value="">-- 系统默认字体 --</option>
+                </select>
+                <button class="btn btn-danger-outline" id="btn-font-delete" style="padding:0 12px; font-size:11px; border-radius:8px;">删除字体</button>
+                <button class="btn btn-danger-outline" id="btn-font-reset" style="padding:0 14px; font-size:11px; border-radius:8px;">恢复系统字体</button>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-outline" id="btn-font-upload" style="flex:1; padding:8px; font-size:11px; border-radius:8px;">导入 .ttf 文件</button>
+                <input type="text" id="font-url-input" placeholder="或输入字体 URL" style="flex:1; padding:6px 10px; font-size:11px; border-radius:8px; border:1.5px solid var(--border);">
+                <button class="btn btn-outline" id="btn-font-url" style="padding:0 12px; font-size:11px; border-radius:8px;">加载</button>
+              </div>
+              <input type="text" id="font-name-input" placeholder="给这个字体起个名字（如：手写体）" style="width:100%; margin-top:8px; padding:6px 10px; font-size:11px; border-radius:8px; border:1.5px solid var(--border);">
+              <input type="file" id="file-font-upload" accept=".ttf,font/ttf,application/octet-stream" style="display:none;">
+            </div>
+
             <div class="form-actions" style="margin-top:24px;">
               <button id="btn-save-beautify" class="btn btn-primary" style="width:100%;">保存并应用美化</button>
               <button id="btn-reset-beautify" class="btn btn-danger-outline" style="width:100%; margin-top:10px;">恢复默认壁纸与全部图标</button>
+            </div>
+            <div class="form-actions" style="margin-top:10px;">
+              <button id="btn-reset-initial-ui" class="btn btn-danger-outline" style="width:100%;">恢复初始 UI（清空所有桌面样式、组件与图标排布）</button>
             </div>
           </div>
 
@@ -838,6 +1050,20 @@
 
           <!-- 二级：数据管理 -->
           <div id="settings-lv2-data" class="settings-lv2-panel" style="display:none;">
+            <!-- 自动备份总开关（数据管理最顶部） -->
+            <div class="data-status-card" style="background:linear-gradient(135deg,#eef2ff,#f0fdf4); border:1px solid #c7d2fe; border-radius:12px; padding:12px 14px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:var(--text-primary);">自动备份提醒</div>
+                  <div style="font-size:11px; color:var(--text-secondary);">每天首次打开主界面时弹出备份提示卡片</div>
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="auto-backup-enabled-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
             <div class="data-status-card" style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:16px;">
               <h4 style="margin:0 0 10px 0; font-size:13px; color:var(--text-primary); font-weight:700;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:4px;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>存储多维统计与健康诊断</h4>
               <div style="display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-secondary);">
@@ -870,6 +1096,11 @@
                 </button>
                 <button id="btn-clean-redundant-avatars" class="btn btn-outline" style="flex:1; padding:8px; font-size:11px; border-color:#3b82f6; color:#3b82f6; border-radius:8px; font-weight:700;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:4px;"><path d="M12 2c-3 5-6 8-6 12a6 6 0 0 0 12 0c0-4-3-7-6-12z"/></svg>清理冗余头像缓存
+                </button>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <button id="btn-manage-images" class="btn btn-outline" style="flex:1; padding:8px; font-size:11px; border-color:#8b5cf6; color:#7c3aed; border-radius:8px; font-weight:700;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>图片管理（查看并删除）
                 </button>
               </div>
             </div>
@@ -908,6 +1139,78 @@
                 <svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;"><path fill="currentColor" d="M12 2L1 21h22L12 2zm1 14h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
                 彻底清除所有数据 (全格式化)
               </button>
+
+              <button id="btn-clear-workbench" class="btn btn-outline" style="width:100%; display:flex; align-items:center; justify-content:center; gap:4px; margin-top:8px; border-color:#f59e0b; color:#b45309;">
+                <svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;"><path fill="currentColor" d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
+                清空工作台对话数据 (GitHub/工作区配置可选保留)
+              </button>
+            </div>
+
+            <!-- Supabase 自动备份板块（可炸开收起） -->
+            <div id="backup-supabase-section" style="background:#fff; border:1px solid var(--border); border-radius:12px; margin-top:16px; overflow:hidden;">
+              <button id="backup-supabase-toggle" class="btn btn-outline" style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border:none; border-radius:0; background:#fff; font-weight:700; font-size:13px; color:var(--text-primary);">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                  Supabase 自动备份
+                </span>
+                <span id="backup-supabase-arrow" style="transition:transform 0.2s;">▼</span>
+              </button>
+              <div id="backup-supabase-body" style="display:none; padding:14px; border-top:1px solid var(--border);">
+                <div style="font-size:11px; color:var(--text-secondary); line-height:1.6; margin-bottom:10px; background:#f0fdf4; padding:8px 10px; border-radius:8px; border:1px solid #bbf7d0;">
+                  <b>使用教程：</b>① 登录 Supabase 控制台，新建一个项目<br>② 进入 SQL Editor，粘贴下方一键复制的建表 SQL 并执行<br>③ 在「项目设置 → API」复制 Project URL 与 anon/service key 填入下方<br>④ 点击备份即可将数据存入云端，恢复时拉取最新备份覆盖本地
+                </div>
+                <button id="btn-supabase-copy-sql" class="btn btn-outline" style="width:100%; padding:8px; font-size:11px; border-color:#3ecf8e; color:#3ecf8e; border-radius:8px; font-weight:700; margin-bottom:10px;">
+                  <svg viewBox="0 0 24 24" width="14" height="14" style="vertical-align:middle; margin-right:4px;"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                  一键复制建表 SQL 命令行
+                </button>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Project URL</label>
+                  <input type="text" id="supabase-backup-url" placeholder="粘贴你的项目 URL" style="width:100%; height:38px; border:1.5px solid var(--border); border-radius:8px; padding:0 10px; font-size:12px; box-sizing:border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom:10px;">
+                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">API Key (anon/service_role)</label>
+                  <input type="password" id="supabase-backup-key" placeholder="eyJhbGci..." style="width:100%; height:38px; border:1.5px solid var(--border); border-radius:8px; padding:0 10px; font-size:12px; box-sizing:border-box;">
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                  <button id="btn-supabase-backup-all" class="btn" style="flex:1; padding:8px; font-size:11px; border-radius:8px; background:#3ecf8e; color:#fff; border:none; font-weight:700;">备份全部数据</button>
+                  <button id="btn-supabase-backup-text" class="btn btn-outline" style="flex:1; padding:8px; font-size:11px; border-radius:8px; border-color:#3ecf8e; color:#3ecf8e; font-weight:700;">备份纯文字</button>
+                </div>
+                <button id="btn-supabase-restore" class="btn btn-outline" style="width:100%; padding:8px; font-size:11px; border-radius:8px; font-weight:700;">一键恢复数据</button>
+              </div>
+            </div>
+
+            <!-- GitHub 自动备份板块（可炸开收起） -->
+            <div id="backup-github-section" style="background:#fff; border:1px solid var(--border); border-radius:12px; margin-top:12px; overflow:hidden;">
+              <button id="backup-github-toggle" class="btn btn-outline" style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border:none; border-radius:0; background:#fff; font-weight:700; font-size:13px; color:var(--text-primary);">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.8 0 3.2.9.8 1.3 1.9 1.3 3.1 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
+                  GitHub 自动备份
+                </span>
+                <span id="backup-github-arrow" style="transition:transform 0.2s;">▼</span>
+              </button>
+              <div id="backup-github-body" style="display:none; padding:14px; border-top:1px solid var(--border);">
+                <div style="font-size:11px; color:var(--text-secondary); line-height:1.6; margin-bottom:10px; background:#f6f8fa; padding:8px 10px; border-radius:8px; border:1px solid #d0d7de;">
+                  <b>使用教程：</b>① 在 GitHub 新建一个空仓库（公开或私有均可）<br>② 前往「Settings → Developer settings → Personal access tokens」生成 Token，勾选 repo 权限<br>③ 将 Token、用户名、仓库名填入下方，点击测试连接<br>④ 备份数据会以 JSON 文件推送到仓库，恢复时从仓库拉取覆盖本地
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">GitHub Token</label>
+                  <input type="password" id="github-backup-token" placeholder="ghp_xxxxxxxx" style="width:100%; height:38px; border:1.5px solid var(--border); border-radius:8px; padding:0 10px; font-size:12px; box-sizing:border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">用户名</label>
+                  <input type="text" id="github-backup-user" placeholder="your-username" style="width:100%; height:38px; border:1.5px solid var(--border); border-radius:8px; padding:0 10px; font-size:12px; box-sizing:border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom:10px;">
+                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">仓库名</label>
+                  <input type="text" id="github-backup-repo" placeholder="my-backup-repo" style="width:100%; height:38px; border:1.5px solid var(--border); border-radius:8px; padding:0 10px; font-size:12px; box-sizing:border-box;">
+                </div>
+                <button id="btn-github-test" class="btn btn-outline" style="width:100%; padding:8px; font-size:11px; border-radius:8px; border-color:#6366f1; color:#6366f1; font-weight:700; margin-bottom:8px;">测试连接</button>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                  <button id="btn-github-backup-all" class="btn" style="flex:1; padding:8px; font-size:11px; border-radius:8px; background:#24292e; color:#fff; border:none; font-weight:700;">备份全部数据</button>
+                  <button id="btn-github-backup-text" class="btn btn-outline" style="flex:1; padding:8px; font-size:11px; border-radius:8px; border-color:#24292e; color:#24292e; font-weight:700;">备份纯文字</button>
+                </div>
+                <button id="btn-github-restore" class="btn btn-outline" style="width:100%; padding:8px; font-size:11px; border-radius:8px; font-weight:700;">一键恢复数据</button>
+              </div>
             </div>
           </div>
 
@@ -937,7 +1240,7 @@
           <h3 id="archive-title">档案库 - 角色</h3>
           <div style="display:flex; gap:4px; align-items:center;">
             <!-- 档案馆设定导入按键 (纯 SVG 矢量) -->
-            <button class="btn-icon" id="btn-archive-import" title="导入设定 (.txt / .docx)">
+            <button class="btn-icon" id="btn-archive-import" title="导入设定 / 角色档案">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </button>
             <input type="file" id="file-archive-import" accept=".txt,.docx" style="display:none;">
@@ -948,7 +1251,6 @@
         </header>
         <div class="win-body">
           <div id="archive-list-container" class="archive-main"></div>
-
           <!-- 全屏可视化图形关系网编辑器 (新页面级层级) -->
           <div id="relation-network-editor" class="chat-details-overlay" style="z-index: 1500; background: #f8fafc;">
             <header class="win-header">
@@ -1048,6 +1350,15 @@
                 </div>
                 <div id="form-general-fields">
                   <div class="form-group"><label>姓名</label><input type="text" id="archive-name" required placeholder="姓名"></div>
+                  <div class="form-group">
+                    <label>性别 <span style="font-size:10px; color:var(--text-secondary); font-weight:normal;">(影响生理期等状态判定)</span></label>
+                    <select id="archive-gender">
+                      <option value="">未设置</option>
+                      <option value="female">女</option>
+                      <option value="male">男</option>
+                      <option value="other">其他 / 不适用</option>
+                    </select>
+                  </div>
                   <div class="form-group"><label>备注 (不发给 AI)</label><input type="text" id="archive-remark" placeholder="仅自己可见"></div>
                   <div class="form-group"><label>母语 / 语言偏好 (留空默认为中文)</label><input type="text" id="archive-language" placeholder="例如：日语、英语、粤语、法语"></div>
                   <div class="form-group"><label>分组</label><input type="text" id="archive-group" placeholder="如：主角团、反派"></div>
@@ -1113,6 +1424,17 @@
           </div>
         </header>
         <div class="win-body">
+          <!-- 全局激活参数（对标酒馆：扫描深度 / Token 预算）—— 分两行，避免窄屏溢出 -->
+          <div style="padding:8px 10px; margin-bottom:10px; background:#f8fafc; border:1.5px solid var(--border); border-radius:10px;">
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <label style="font-size:11px; font-weight:700; color:#6b7280; margin:0; white-space:nowrap;">扫描深度</label>
+              <input type="number" id="wb-global-scandepth" value="10" min="1" style="width:58px; padding:5px; font-size:12px; border-radius:8px; border:1.5px solid var(--border); text-align:center;">
+              <label style="font-size:11px; font-weight:700; color:#6b7280; margin:0; white-space:nowrap;">Token 预算</label>
+              <input type="number" id="wb-global-budget" value="0" min="0" style="width:70px; padding:5px; font-size:12px; border-radius:8px; border:1.5px solid var(--border); text-align:center;">
+              <span style="font-size:10px; color:var(--text-secondary); white-space:nowrap;">0 = 不限</span>
+            </div>
+            <button type="button" class="btn btn-outline" id="btn-wb-tidy-old" style="width:100%; margin-top:8px; padding:7px 9px; font-size:11px; border-radius:8px;">一键整理旧条目（未设置插入位置）</button>
+          </div>
           <div id="world_book-list-container"></div>
           
           <!-- 世界书条目弹层 -->
@@ -1152,14 +1474,90 @@
                   <label>触发关键词 (仅关键词模式生效，英文或中文逗号分隔多个词)</label>
                   <input type="text" id="wb-entry-keywords" placeholder="例如：剑术, 拔刀, 佩剑">
                 </div>
-                <div class="form-group">
-                  <label>注入深度 Depth (支持负数！数值越小越靠前，如 -900 可排在人设最前方)</label>
-                  <input type="number" id="wb-entry-depth" required value="10" placeholder="-900 或 10">
+                <div class="form-group" style="display:flex; gap:10px;">
+                  <div style="flex:1.5;">
+                    <label>插入位置 Position（对标酒馆）</label>
+                    <select id="wb-entry-position" style="width:100%; padding:8px; border-radius:8px; border:1.5px solid var(--border); font-size:12px; background:#fff;">
+                      <option value="before_char">角色定义之前（世界观总纲）</option>
+                      <option value="after_char" selected>角色定义之后（角色详情/NPC/场景）</option>
+                      <option value="after_rule">回复准则之后（写作规范/行为纠正）</option>
+                      <option value="at_depth">聊天记录内（按深度注入）</option>
+                      <option value="legacy">旧版（按 Depth 原样排序）</option>
+                    </select>
+                  </div>
+                  <div style="flex:0.75;">
+                    <label>顺序 Order</label>
+                    <input type="number" id="wb-entry-order" value="100" placeholder="100">
+                  </div>
+                </div>
+                <div class="form-group" style="display:flex; gap:10px;">
+                  <div style="flex:1;">
+                    <label>深度 Depth（聊天内 / 旧版使用）</label>
+                    <input type="number" id="wb-entry-depth" value="10" placeholder="4">
+                  </div>
+                  <div style="flex:1;">
+                    <label>角色 Role（聊天内使用）</label>
+                    <select id="wb-entry-role" style="width:100%; padding:8px; border-radius:8px; border:1.5px solid var(--border); font-size:12px; background:#fff;">
+                      <option value="system">system</option>
+                      <option value="user">user</option>
+                      <option value="assistant">assistant</option>
+                    </select>
+                  </div>
                 </div>
                 <div class="form-group">
                   <label>设定文本内容</label>
                   <textarea id="wb-entry-content" rows="5" required placeholder="输入具体的设定描述文本..."></textarea>
                 </div>
+
+                <details id="wb-entry-advanced" style="margin:10px 0; border:1.5px solid var(--border); border-radius:10px; padding:8px 10px; background:#fafbfc;">
+                  <summary style="cursor:pointer; font-size:12px; font-weight:700; color:#6b7280;">高级：关键词逻辑 / 互斥组 / 粘滞冷却 / 覆盖扫描</summary>
+                  <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
+                    <div class="form-group" style="margin:0;">
+                      <label>关键词逻辑 (selectiveLogic)</label>
+                      <select id="wb-entry-logic" style="width:100%; padding:8px; border-radius:8px; border:1.5px solid var(--border); font-size:12px; background:#fff;">
+                        <option value="AND_ANY">命中任一主词（次要词命中任一即可）</option>
+                        <option value="AND_ALL">命中主词 且 命中全部次要词</option>
+                        <option value="NOT_ANY">命中主词 且 不命中任何次要词</option>
+                        <option value="NOT_ALL">命中主词 且 未命中全部次要词</option>
+                      </select>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                      <label>次要关键词（英文或中文逗号分隔）</label>
+                      <input type="text" id="wb-entry-secondary" placeholder="例如：白天, 户外">
+                    </div>
+                    <div class="form-group" style="margin:0; display:flex; gap:10px;">
+                      <div style="flex:1;">
+                        <label>互斥组名（同组只激活一条）</label>
+                        <input type="text" id="wb-entry-ingroup" placeholder="留空 = 不互斥">
+                      </div>
+                      <div style="flex:0.7;">
+                        <label>组内权重</label>
+                        <input type="number" id="wb-entry-weight" value="100">
+                      </div>
+                    </div>
+                    <div class="form-group" style="margin:0; display:flex; gap:10px;">
+                      <div style="flex:1;">
+                        <label>粘滞轮数（触发后保持）</label>
+                        <input type="number" id="wb-entry-sticky" value="0" min="0">
+                      </div>
+                      <div style="flex:1;">
+                        <label>冷却轮数（触发后禁用）</label>
+                        <input type="number" id="wb-entry-cooldown" value="0" min="0">
+                      </div>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                      <label>单独扫描深度（0 = 用全局）</label>
+                      <input type="number" id="wb-entry-scandepth" value="0" min="0">
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:14px; font-size:12px; padding:2px 0;">
+                      <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="wb-entry-case"> 区分大小写</label>
+                      <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="wb-entry-whole"> 匹配整词</label>
+                      <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="wb-entry-useprob" checked> 启用概率</label>
+                      <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="wb-entry-goverride"> 组内优先</label>
+                      <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="wb-entry-ignorebudget"> 忽略预算</label>
+                    </div>
+                  </div>
+                </details>
                 <div class="form-actions">
                   <button type="button" class="btn btn-outline" id="btn-cancel-wb-form">取消</button>
                   <button type="submit" class="btn btn-primary" id="btn-save-wb">保存</button>
@@ -1188,6 +1586,10 @@
             </button>
             <button class="btn-icon" id="btn-new-chat">
               <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            </button>
+            <!-- 小程序入口（在聊天列表页页头，也可下拉进入） -->
+            <button class="btn-icon" id="btn-miniprogram-entry" title="小程序" style="color:#07c160;">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
             </button>
           </div>
         </header>
@@ -1322,12 +1724,20 @@
                 <span>我的表情包</span>
                 <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
               </div>
+              <div class="menu-item" onclick="AppAssistant.openPanel()">
+                <span>应用小助手</span>
+                <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+              </div>
               <div class="menu-item" onclick="openMeSub('collection')">
                 <span>我的收藏室</span>
                 <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
               </div>
               <div class="menu-item" onclick="openMeSub('wallet')">
                 <span>钱包</span>
+                <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+              </div>
+              <div class="menu-item" onclick="openMeSub('files')">
+                <span>文件管理</span>
                 <svg viewBox="0 0 24 24" class="chevron"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
               </div>
             </div>
@@ -1408,9 +1818,10 @@
             </div>
 
             <div class="multi-select-action-bar" id="multi-select-bar" style="display: none;">
-              <button id="btn-multi-translate" class="btn btn-outline" style="flex:1; border-color:#0284c7; color:#0284c7; font-weight:700;">批量翻译</button>
-              <button id="btn-multi-delete" class="btn btn-danger-outline" style="flex:1;">删除选中 (<span id="selected-count">0</span>)</button>
-              <button id="btn-multi-cancel" class="btn" style="flex:1;">退出多选</button>
+              <button id="btn-multi-share" class="btn btn-outline" style="flex:1; min-width:0; padding:8px 4px; font-size:11px; border-color:#4A7DBF; color:#4A7DBF; font-weight:700;">分享</button>
+              <button id="btn-multi-translate" class="btn btn-outline" style="flex:1; min-width:0; padding:8px 4px; font-size:11px; border-color:#4A7DBF; color:#4A7DBF; font-weight:700;">批量翻译</button>
+              <button id="btn-multi-delete" class="btn btn-danger-outline" style="flex:1; min-width:0; padding:8px 4px; font-size:11px;">删除选中 (<span id="selected-count">0</span>)</button>
+              <button id="btn-multi-cancel" class="btn" style="flex:1; min-width:0; padding:8px 4px; font-size:11px;">退出多选</button>
             </div>
             
             <!-- === 统一在轨：全功能多态自适应加号展开面板（装载全部 18 项物理按键，严禁遗漏任何单聊特权） === -->
@@ -1591,8 +2002,11 @@
                   </div>
                   <div class="expand-item" id="btn-chat-group-members" style="display:none;">
                     <div class="expand-icon-wrapper">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M17 21v-2a4 4 0 0 0-3-3.87m4-12a4 4 0 1 1-4 4"/>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                       </svg>
                     </div>
                     <span>成员管理</span>
@@ -1651,6 +2065,48 @@
                 </label>
               </div>
             </div>
+
+            <!-- 新增：群聊允许小程序分享开关 -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 12px; border-radius:12px; background:var(--surface); border: 1.5px solid var(--border); margin-top:14px;">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--text-secondary);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#07c160;">
+                  <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                允许群成员分享小程序
+              </label>
+              <label class="switch">
+                <input type="checkbox" id="group-details-allow-miniprogram-share">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <!-- 新增：群聊线下赴约记录拼入线上上下文开关 -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 12px; border-radius:12px; background:var(--surface); border: 1.5px solid var(--border); margin-top:14px;">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--text-secondary);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#ec4899;">
+                  <path d="M12 21s-7-4.35-7-10a7 7 0 0 1 14 0c0 5.65-7 10-7 10z"/>
+                  <circle cx="12" cy="11" r="2.5"/>
+                </svg>
+                线下赴约记录拼入线上上下文
+              </label>
+              <label class="switch">
+                <input type="checkbox" id="group-details-merge-offline-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div style="font-size:10px; color:var(--text-secondary); padding: 0 2px; margin-top: -8px;">开启后，本群赴约模式未总结的对话记录将按时间线拼入线上群聊上下文，并参与自动总结轮数统计与向量搜索原文召回。</div>
+
+            <!-- 公告历史入口 -->
+            <div class="form-group" id="btn-group-announce-history" style="display:flex; align-items:center; justify-content:space-between; padding: 12px; border-radius:12px; background:var(--surface); border: 1.5px solid var(--border); margin-top:14px; cursor:pointer;">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:700; color:var(--text-secondary);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#4A7DBF;">
+                  <path d="M21 8H3V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2z"/><path d="M10 12h4"/><path d="M19 8v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/>
+                </svg>
+                历史公告（查看 / 重新置顶）
+              </label>
+              <svg viewBox="0 0 24 24" style="width:16px; height:16px; color:var(--text-secondary);"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+            </div>
+
             <!-- 新增：群专属个性化聊天美化入口 -->
             <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 12px; border-radius:12px; background:var(--surface); border: 1.5px solid var(--border); margin-top:14px; cursor:pointer;" onclick="chatBeautifySystem.openPanel()">
               <label style="margin-bottom:0; display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:700; color:var(--text-secondary);">
@@ -1664,8 +2120,8 @@
 
             <div class="form-actions" style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
               <button id="btn-group-details-save" class="btn btn-primary" style="width:100%;">保存群后台修改</button>
-              <button id="btn-group-details-clear" class="btn btn-outline" style="width:100%; color: #b45309; border-color: #fde68a;">清空群聊天记录</button>
-              <button id="btn-group-details-delete" class="btn btn-outline" style="width:100%; color: #991b1b; border-color: #fca5a5; background-color: #fef2f2;">解散并删除此群聊</button>
+              <button id="btn-group-details-clear" class="btn btn-outline" style="width:100%; color: #C25C7C; border-color: #F0CDD8;">清空群聊天记录</button>
+              <button id="btn-group-details-delete" class="btn btn-outline" style="width:100%; color: #A84462; border-color: #F0CDD8; background-color: #FCEDF2;">解散并删除此群聊</button>
             </div>
           </div>
         </div>
@@ -1984,34 +2440,38 @@
               </header>
               <div class="win-body" style="padding: 16px; overflow-y: auto; display: flex; flex-direction: column; justify-content: space-between; height: calc(100% - 50px); box-sizing: border-box;">
                 <div style="flex:1; overflow-y:auto;">
-                  <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); font-weight:700; background:#f8fafc; padding:10px 14px; border-radius:10px; margin-bottom:14px; border:1px solid var(--border);">
-                    <span>当前在线人数：<span id="group-online-count" style="color:var(--primary);">0</span> 人</span>
-                    <span>当前活跃人数：<span id="group-active-count" style="color:#07c160;">0</span> 人</span>
+                  <div class="group-stat-bar">
+                    <div class="group-stat"><b id="group-stat-total">0</b><span>成员总数</span></div>
+                    <div class="group-stat"><b id="group-stat-active" style="color:#4A7DBF;">0</b><span>近 30 分钟活跃</span></div>
+                    <div class="group-stat"><b id="group-stat-muted" style="color:#C25C7C;">0</b><span>禁言中</span></div>
                   </div>
+                  <div class="group-members-toolbar" id="group-members-toolbar"></div>
                   <div id="group-members-list-box" style="display:flex; flex-direction:column; gap:10px;"></div>
                 </div>
                 <!-- 底部邀请成员操作按钮 -->
-                <div style="padding-top:16px; border-top: 1.5px solid var(--border); background:#fff; flex-shrink:0;">
-                  <button class="btn btn-primary" onclick="if(window.groupChatSystem){window.groupChatSystem.openGroupInviteSelector();}" style="width:100%; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px;">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <div style="padding-top:12px; border-top: 1.5px solid var(--border); flex-shrink:0;">
+                  <button onclick="if(window.groupChatSystem){window.groupChatSystem.openGroupInviteSelector();}" style="width:100%; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; background:transparent; border:none; color:var(--primary); padding:10px 0; cursor:pointer; font-size:14px;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     邀请新的群成员
                   </button>
                 </div>
               </div>
             </div>
 
-            <!-- 邀请成员专属多选浮层 -->
+            <!-- 邀请新成员入群浮层（三段式 flex 布局：标题固定 / 列表滚动区严格夹在中间 / 按钮固定底部，杜绝遮挡） -->
             <div id="group-invite-overlay" class="modal-overlay" style="z-index: 1200;">
-              <div class="modal" style="max-height: 85%;">
-                <header class="modal-header">
+              <div class="modal" style="max-height: 85%; display: flex; flex-direction: column; overflow: hidden;">
+                <header class="modal-header" style="flex-shrink: 0;">
                   <h4>邀请新成员入群</h4>
                   <button class="btn-icon" onclick="document.getElementById('group-invite-overlay').classList.remove('active')">
                     <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                   </button>
                 </header>
-                <div class="win-body" style="padding: 16px; overflow-y: auto;">
-                  <div id="group-invite-members-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 240px; overflow-y: auto; padding: 4px 2px; margin-bottom: 16px;"></div>
-                  <button class="btn btn-primary" onclick="if(window.groupChatSystem){window.groupChatSystem.submitGroupInvitation();}" style="width:100%; font-weight:700;">确认邀请加入</button>
+                <div class="win-body" style="padding: 12px 16px; display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 0;">
+                  <div id="group-invite-members-list" style="display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; padding: 4px 2px; margin-bottom: 10px;"></div>
+                  <div style="flex-shrink: 0; padding-top: 10px; border-top: 1px solid var(--border); background: var(--bg);">
+                    <button class="btn btn-outline" onclick="if(window.groupChatSystem){window.groupChatSystem.submitGroupInvitation();}" style="width:100%; font-weight:700; background:transparent !important; border:1.5px solid var(--primary); color:var(--primary); border-radius:8px; padding:10px 0; cursor:pointer;">确认邀请加入</button>
+                  </div>
                 </div>
               </div>
             </div> <!-- 邀请成员专属多选浮层 -->
@@ -2030,8 +2490,20 @@
                 <input type="text" id="group-poll-title" placeholder="请输入投票主题" required>
               </div>
               <div class="form-group">
-                <label>投票选项 (每行一个)</label>
+                <label>投票选项 (每行一个，最多 12 个)</label>
                 <textarea id="group-poll-options" rows="4" placeholder="选项 1&#10;选项 2&#10;选项 3" required></textarea>
+              </div>
+              <div class="form-group" style="display:flex; gap:10px; align-items:center;">
+                <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin:0; flex:1; font-weight:700; color:var(--text-secondary);">
+                  <input type="checkbox" id="group-poll-multi"> 允许多选
+                </label>
+                <select id="group-poll-deadline" style="padding:7px 8px; font-size:11px; border-radius:8px; border:1.5px solid var(--border); background:#fff; color:var(--text-secondary); font-weight:700;">
+                  <option value="0">不设截止</option>
+                  <option value="10">10 分钟后截止</option>
+                  <option value="60">1 小时后截止</option>
+                  <option value="720">12 小时后截止</option>
+                  <option value="1440">1 天后截止</option>
+                </select>
               </div>
               <button class="btn btn-primary" id="btn-group-poll-submit" style="width:100%; height:40px; font-weight:700;">发布投票卡片</button>
             </div>
@@ -2042,12 +2514,13 @@
         <div id="group-helper-overlay" class="modal-overlay" style="z-index: 1500;">
           <div class="modal" style="max-height:85%;">
             <header class="modal-header">
-              <h4>群助手 - 引入机器人</h4>
+              <h4 id="group-helper-title">群助手 - 引入机器人</h4>
               <button class="btn-icon" onclick="document.getElementById('group-helper-overlay').classList.remove('active')">
                 <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
               </button>
             </header>
             <div class="win-body" style="padding:16px; overflow-y:auto;">
+              <input type="hidden" id="group-bot-id">
               <div class="form-group">
                 <label>机器人姓名 (艾特响应名)</label>
                 <input type="text" id="group-bot-name" placeholder="例如：养鸡农场">
@@ -2064,6 +2537,97 @@
                 <label>快捷命令配置 (语法：命令名 | 返回对白变量，每行一个)</label>
                 <textarea id="group-bot-commands" rows="4" placeholder="起名 | @Sender 你的小鸡【VALUE】正在吃草！&#10;喂食 | @Sender 投喂成功！饱食度增加20%，当前饱食度：80%"></textarea>
               </div>
+              <div class="form-group">
+                <label>同一成员连续触发的冷却秒数 (0 = 不限制)</label>
+                <input type="number" id="group-bot-cooldown" value="3" min="0" placeholder="3">
+              </div>
+
+              <details style="margin:10px 0; border:1.5px solid var(--border); border-radius:10px; padding:8px 10px; background:#f8fafc;">
+                <summary style="cursor:pointer; font-size:12px; font-weight:700; color:#6b7280;">群管家能力：触发方式 / 入群欢迎 / 定时推送</summary>
+                <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
+                  <div class="form-group" style="margin:0;">
+                    <label>触发方式</label>
+                    <select id="group-bot-trigger" style="width:100%; padding:8px; border-radius:8px; border:1.5px solid var(--border); font-size:12px; background:#fff;">
+                      <option value="at">仅 @机器人 触发</option>
+                      <option value="keyword">仅关键词触发（听到就回）</option>
+                      <option value="both">@ 或关键词都触发</option>
+                    </select>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>触发关键词（逗号分隔，仅关键词模式下生效）</label>
+                    <input type="text" id="group-bot-keywords" placeholder="例如：喵, 猫猫, 喂猫">
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>入群欢迎语（新成员加入时自动发出）</label>
+                    <textarea id="group-bot-welcome" rows="2" placeholder="欢迎 @Sender 加入本群！有问题可以 @机器人 找我～"></textarea>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>定时推送间隔（秒，0 = 关闭）</label>
+                    <input type="number" id="group-bot-schedule-sec" value="0" min="0" placeholder="例如 1800 = 半小时一条">
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>定时推送内容（支持 || 随机分支与变量）</label>
+                    <textarea id="group-bot-schedule-text" rows="2" placeholder="【{bot}提醒】现在是 {time}，别忘了喝水～ || 【{bot}播报】{date} 已签到 {streak} 人"></textarea>
+                  </div>
+                </div>
+              </details>
+
+              <details style="margin:10px 0; border:1.5px solid var(--border); border-radius:10px; padding:8px 10px; background:#f8fafc;">
+                <summary style="cursor:pointer; font-size:12px; font-weight:700; color:#6b7280;">养成玩法：签到 / 投喂 / 撸一把 / 排行榜</summary>
+                <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
+                  <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; color:var(--text-secondary); margin:0;">
+                    <input type="checkbox" id="group-bot-growth-enabled" checked> 开启养成系统
+                  </label>
+                  <div class="form-group" style="margin:0; display:flex; gap:10px;">
+                    <div style="flex:1;">
+                      <label>资源名称</label>
+                      <input type="text" id="group-bot-unit" value="小鱼干" placeholder="小鱼干">
+                    </div>
+                    <div style="flex:1;">
+                      <label>升级基础经验（每级递增）</label>
+                      <input type="number" id="group-bot-level-step" value="20" min="5">
+                    </div>
+                  </div>
+                  <div class="form-group" style="margin:0; display:flex; gap:10px;">
+                    <div style="flex:1;">
+                      <label>签到奖励</label>
+                      <input type="number" id="group-bot-sign-points" value="5" min="0">
+                    </div>
+                    <div style="flex:1;">
+                      <label>投喂奖励</label>
+                      <input type="number" id="group-bot-feed-points" value="3" min="0">
+                    </div>
+                    <div style="flex:1;">
+                      <label>每次互动经验</label>
+                      <input type="number" id="group-bot-exp" value="2" min="0">
+                    </div>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>可投喂物品池（逗号分隔，随机挑一个）</label>
+                    <input type="text" id="group-bot-feed-items" placeholder="小鱼干, 冻干, 罐头">
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>签到文案（留空用默认；支持 || 随机与变量）</label>
+                    <textarea id="group-bot-sign-tpl" rows="2" placeholder="{user} 签到成功！连续 {streak} 天，获得 {gain} 个{unit}"></textarea>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>投喂文案</label>
+                    <textarea id="group-bot-feed-tpl" rows="2" placeholder="{user} 投喂了一份{value}，{bot} 吃得很香！"></textarea>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>撸一把文案</label>
+                    <textarea id="group-bot-pat-tpl" rows="2" placeholder="{user} 撸了{bot} 一把，它舒服地眯起眼睛 || {bot} 蹭了蹭 {user} 的手"></textarea>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>状态文案（留空用默认表格）</label>
+                    <textarea id="group-bot-stat-tpl" rows="2" placeholder="@{user} 现有 {points} 个{unit}，等级 Lv.{level}"></textarea>
+                  </div>
+                  <div style="font-size:10px; color:var(--text-secondary); line-height:1.6;">
+                    可用变量：{user} {bot} {unit} {value} {points} {level} {exp} {streak} {gain} {time} {date}
+                  </div>
+                </div>
+              </details>
+
               <div class="form-actions" style="margin-top:16px;">
                 <button class="btn btn-primary" id="btn-group-bot-save" style="width:100%;">保存并部署机器人</button>
               </div>
@@ -2075,7 +2639,7 @@
         <div id="group-announce-overlay" class="modal-overlay" style="z-index: 1500; align-items:center !important; justify-content:center !important;">
           <div class="modal" style="max-width:320px; border-radius:16px; padding:20px;">
             <header class="modal-header" style="border-bottom:none; padding-bottom:0;">
-              <h4>发布群公告</h4>
+              <h4 id="group-announce-form-title">发布群公告</h4>
               <button class="btn-icon" onclick="document.getElementById('group-announce-overlay').classList.remove('active')">
                 <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
               </button>
@@ -2088,6 +2652,16 @@
               <div class="form-group">
                 <label>具体内容</label>
                 <textarea id="group-announce-text" rows="5" placeholder="请输入群公告具体要求或通知..." required></textarea>
+              </div>
+              <div class="form-group">
+                <label>有效期（到期自动下架，可在历史公告里找回）</label>
+                <select id="group-announce-expire" style="width:100%; padding:8px; border-radius:8px; border:1.5px solid var(--border); font-size:12px; background:#fff;">
+                  <option value="0">长期有效</option>
+                  <option value="1">1 小时后自动下架</option>
+                  <option value="6">6 小时后自动下架</option>
+                  <option value="24">1 天后自动下架</option>
+                  <option value="72">3 天后自动下架</option>
+                </select>
               </div>
               <button class="btn btn-primary" id="btn-group-announce-submit" style="width:100%; height:40px; font-weight:700;">确认发布置顶公告</button>
             </div>
@@ -2106,6 +2680,11 @@
             <div class="form-group">
               <label>自定义对方 (Char) 姓名</label>
               <input type="text" id="details-char-name">
+            </div>
+
+            <div class="form-group">
+              <label>备注 (不发给 AI，用于区分同一角色的不同对话)</label>
+              <input type="text" id="details-char-remark" placeholder="留空则无备注">
             </div>
             
             <div class="form-group">
@@ -2177,6 +2756,65 @@
                 <span class="slider"></span>
               </label>
             </div>
+
+            <!-- 翻译随动子开关：默认单次调用（正文末尾结构化译文块）；开启后翻译未命中时允许追加一次翻译 API -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 8px 0; border-top: 1px solid var(--border);">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                  <path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.9 4.9l2.8 2.8"/><path d="M16.3 16.3l2.8 2.8"/><path d="M4.9 19.1l2.8-2.8"/><path d="M16.3 7.7l2.8-2.8"/>
+                </svg> 翻译未命中时允许追加一次 API
+              </label>
+              <label class="switch">
+                <input type="checkbox" id="details-translate-fallback">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <!-- 真实照片发送模式：auto=按模型名自动判断；on=强制发送（视觉模型）；off=只发文字描述 -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 8px 0; border-top: 1px solid var(--border);">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                </svg> 真实照片发送给模型
+              </label>
+              <select id="details-vision-mode" style="padding:5px 8px; border:1px solid var(--border); border-radius:8px; font-size:11px; background:#fff;">
+                <option value="auto">自动识别模型</option>
+                <option value="on">强制发送（视觉模型）</option>
+                <option value="off">只发文字描述</option>
+              </select>
+            </div>
+
+            <!-- 分享链接配图送给模型：抓取小红书等帖子配图，压缩后随分享消息一起发给视觉模型 -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 8px 0; border-top: 1px solid var(--border);">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                  <path d="M4 4h16v12H4z"/><path d="M2 20h20"/><circle cx="9" cy="9" r="1.6"/><path d="M4 14l4.5-4.5L13 14l3-3 4 4"/>
+                </svg> 分享链接配图发给模型
+              </label>
+              <select id="details-share-vision-count" style="padding:5px 8px; border:1px solid var(--border); border-radius:8px; font-size:11px; background:#fff;">
+                <option value="0">不附带图片</option>
+                <option value="1">附带 1 张</option>
+                <option value="2">附带 2 张</option>
+                <option value="3">附带 3 张</option>
+                <option value="5">附带 5 张</option>
+              </select>
+            </div>
+            <div style="font-size:10px; color:var(--text-secondary); padding: 0 0 6px 0; margin-top: -6px;">分享小红书等帖子时，抓取帖子配图并压缩后随消息一起发给视觉模型（仅在上方为「自动识别模型/强制发送」且模型支持视觉时生效；图片会占用较多 token，张数越多越贵）。</div>
+
+            <!-- 线下赴约记录拼入线上上下文：开启后赴约模式下未总结的对话记录按时间线拼入线上对话上下文，参与自动总结轮数统计与向量检索 -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 8px 0; border-top: 1px solid var(--border);">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                  <path d="M12 21s-7-4.35-7-10a7 7 0 0 1 14 0c0 5.65-7 10-7 10z"/>
+                  <circle cx="12" cy="11" r="2.5"/>
+                </svg> 线下赴约记录拼入线上上下文
+              </label>
+              <label class="switch">
+                <input type="checkbox" id="details-merge-offline-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div style="font-size:10px; color:var(--text-secondary); padding: 0 0 6px 0; margin-top: -6px;">开启后，赴约模式未总结的对话记录将按时间线拼入线上对话上下文，并参与自动总结轮数统计与向量搜索原文召回（线下记录会以【线下赴约】标签隔离，避免与线上微信格式混淆）。</div>
 
             <!-- 新增：允许AI发送语音与图片开关 -->
             <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 8px 0; border-top: 1px solid var(--border);">
@@ -2358,6 +2996,20 @@
               </label>
             </div>
 
+            <!-- 新增：允许小程序分享（下拉进入小程序，分享卡片邀请对方一起玩） -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 8px 0; border-top: 1px solid var(--border);">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                  <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                允许小程序分享
+              </label>
+              <label class="switch">
+                <input type="checkbox" id="details-allow-miniprogram-share">
+                <span class="slider"></span>
+              </label>
+            </div>
+
             <!-- 新增：个性化聊天美化入口 -->
             <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); cursor:pointer;" onclick="chatBeautifySystem.openPanel()">
               <label style="margin-bottom:0; display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
@@ -2380,6 +3032,18 @@
               </label>
               <svg viewBox="0 0 24 24" style="width:16px; height:16px; color:var(--text-secondary);"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
             </div>
+
+            <!-- 新增：上下文管理入口（结构化查看最近请求全文 + 逐段开关/排序） -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; padding: 12px 0; border-bottom: 1px solid var(--border); cursor:pointer;" onclick="window.contextManager && window.contextManager.openPanel()">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#6E96CB;">
+                  <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 5 17.5V8a2.5 2.5 0 0 1 2.5-2.5A2.5 2.5 0 0 1 9.5 2z"/>
+                  <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 19 17.5V8a2.5 2.5 0 0 0-2.5-2.5A2.5 2.5 0 0 0 14.5 2z"/>
+                </svg> 上下文管理
+              </label>
+              <svg viewBox="0 0 24 24" style="width:16px; height:16px; color:var(--text-secondary);"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+            </div>
+            <div style="font-size:10px; color:var(--text-secondary); padding: 0 0 6px 0; margin-top: -6px;">查看最近一轮请求全文，并结构化地开关、排序线上 / 小剧场线下 / 赴约线下三类上下文段。</div>
 
             <!-- 新增：自定义模拟时间设定卡片 -->
             <div class="form-group" id="details-custom-time-container" style="display:none; padding: 10px; background: #f8fafc; border-radius: 8px; border: 1.5px solid var(--border); margin-top: -6px; margin-bottom: 12px;">
@@ -2422,6 +3086,58 @@
                 <button id="btn-details-sticker-mount" class="btn btn-outline" type="button" style="padding:8px 12px;flex-shrink:0;font-size:12px;">选择</button>
               </div>
             </div>
+            <!-- 反查手机：允许对方查看你的手机 -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                  <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>
+                </svg> 允许对方查看你的手机
+              </label>
+              <label class="switch">
+                <input type="checkbox" id="details-reverse-check-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div id="details-reverse-check-freq" style="display:none;">
+              <div style="font-size:10px; color:var(--text-secondary); margin:-4px 0 8px;">开启后，对方会趁你不注意翻看你的手机（会弹窗问你是否同意）。</div>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-outline rc-freq-btn" data-freq="high" style="flex:1;">高频</button>
+                <button type="button" class="btn btn-outline rc-freq-btn" data-freq="medium" style="flex:1;">中频</button>
+                <button type="button" class="btn btn-outline rc-freq-btn" data-freq="low" style="flex:1;">低频</button>
+              </div>
+              <div id="rc-freq-desc" style="font-size:10px; color:var(--text-secondary); margin-top:7px; line-height:1.55;">高频：每 10 分钟检查一次，距上次翻手机超过 30 分钟就自动触发。</div>
+              <button id="btn-reverse-check-now" class="btn btn-outline" type="button" style="width:100%; margin-top:10px; display:flex; align-items:center; justify-content:center; gap:6px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+                立刻触发一次
+              </button>
+            </div>
+            <!-- 允许突然发起查手机请求：char 可在聊天中用 [CHECK_PHONE] 指令突然要求翻你的手机 -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--border); padding-top:14px; margin-top:4px;">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                  <path d="M13 2 3 14h7l-1 8 10-12h-7z"/>
+                </svg> 允许突然发起查手机请求
+              </label>
+              <label class="switch">
+                <input type="checkbox" id="details-allow-auto-check-phone">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div style="font-size:10px; color:var(--text-secondary); margin:-6px 0 8px; line-height:1.55;">开启后，对方在聊天里可以像发语音、发朋友圈一样，突然丢出一个「查你手机」的请求（会先弹卡问你是否同意，你也可以抗议）。与上面「翻看你的手机」是两套：上面的按频率自动触发，这个由对方在对话里自己挑时机。</div>
+
+            <!-- 仪轨：四维状态进入对话上下文 -->
+            <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+              <label style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                  <rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/><circle cx="8.5" cy="14.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="14.5" r="1.1" fill="currentColor" stroke="none"/>
+                </svg> 仪轨状态进入对话上下文
+              </label>
+              <label class="switch">
+                <input type="checkbox" id="details-ritual-state-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div style="font-size:10px; color:var(--text-secondary); padding: 0 0 6px 0; margin-top: -6px;">开启后，仪轨里「你」和「对方」当天的日程 / 穿着 / 随身物品 / 位置 会进入对话 Prompt，让角色说话时有真实的生活细节。</div>
             <div class="form-actions" style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
               <button id="btn-save-details" class="btn btn-primary" style="width:100%;">保存当前会话配置</button>
               <button id="btn-details-block-char" class="btn btn-outline" style="width:100%; color: #ef4444; border-color: #fca5a5; font-weight: 700;">拉黑对方</button>
@@ -2624,12 +3340,14 @@
                       <div class="form-group" style="margin-bottom:12px;">
                         <label style="font-size:11px; color:#15803d; font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">
                           <span>3. 最低相似度阈值</span>
-                          <span id="vector-threshold-val">0.55</span>
                         </label>
-                        <input type="range" id="vector-threshold" min="0.3" max="0.8" step="0.05" value="0.55" style="width:100%;">
+                        <div style="display:flex; gap:8px; align-items:center;">
+                          <input type="range" id="vector-threshold" min="0.10" max="0.95" step="0.01" value="0.55" style="flex:1;">
+                          <input type="number" id="vector-threshold-input" min="0.10" max="0.95" step="0.01" value="0.55" style="width:60px; text-align:center; padding:4px; border:1.5px solid var(--border); border-radius:6px; font-weight:700; font-size:12px;">
+                        </div>
                         <div style="display:flex; justify-content:space-between; font-size:9px; color:#15803d; margin-top:2px;">
-                          <span>发散 (0.3)</span>
-                          <span>精确 (0.8)</span>
+                          <span>发散 (0.10)</span>
+                          <span>精确 (0.95)</span>
                         </div>
                       </div>
                       
@@ -2659,6 +3377,53 @@
                         <button id="btn-rebuild-vectors" class="btn btn-outline" style="width:100%; padding:8px; font-size:11px; border-color:#ca8a04; color:#ca8a04; border-radius:8px; font-weight:700; cursor:pointer;">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:4px;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>一键补建历史总结向量 (<span id="missing-vectors-count">检测中...</span>)
                         </button>
+                      </div>
+
+                      <!-- 5. 原始对话向量检索（第二维度，独立于三角形总结检索）[3] -->
+                      <div class="form-group" style="margin-top:14px; border-top:1px dashed #93c5fd; padding-top:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                          <label style="font-size:11px; color:#1d4ed8; font-weight:700;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:3px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>原始对话向量检索
+                          </label>
+                          <label class="ios-switch" style="margin:0;">
+                            <input type="checkbox" id="raw-dialogue-toggle">
+                            <span class="ios-slider"></span>
+                          </label>
+                        </div>
+                        <div id="raw-dialogue-config-section" style="display:none;">
+                          <div style="font-size:10px; color:#64748b; line-height:1.5; margin-bottom:10px; padding:8px; background:#eff6ff; border-radius:6px; border:1px solid #bfdbfe;">
+                            独立于三角形总结检索的第二维度。将每轮原始对话(user+char)预嵌入向量，检索时用当前消息匹配最相似的历史真实对话原文注入，精准且省token。与总结去重避免冗余。
+                          </div>
+                          <!-- 检索轮数 -->
+                          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                            <label style="font-size:11px; font-weight:700; color:#334155; white-space:nowrap; min-width:70px;">检索轮数</label>
+                            <input type="range" id="raw-dialogue-topk" min="1" max="10" step="1" value="3" style="flex:1;">
+                            <input type="number" id="raw-dialogue-topk-input" min="1" max="10" value="3" style="width:40px; text-align:center; font-size:11px; border:1px solid #cbd5e1; border-radius:4px; padding:2px;">
+                          </div>
+                          <!-- 相似度阈值 -->
+                          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                            <label style="font-size:11px; font-weight:700; color:#334155; white-space:nowrap; min-width:70px;">相似阈值</label>
+                            <input type="range" id="raw-dialogue-threshold" min="0.10" max="0.95" step="0.01" value="0.50" style="flex:1;">
+                            <input type="number" id="raw-dialogue-threshold-input" min="0.10" max="0.95" step="0.01" value="0.50" style="width:50px; text-align:center; font-size:11px; border:1px solid #cbd5e1; border-radius:4px; padding:2px;">
+                          </div>
+                          <!-- 上下文检索轮数：用最近N轮(user+char)消息拼接作为查询，索引连续话题 [2] -->
+                          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                            <label style="font-size:11px; font-weight:700; color:#334155; white-space:nowrap; min-width:70px;">上下文轮数</label>
+                            <input type="range" id="raw-dialogue-context-rounds" min="1" max="10" step="1" value="3" style="flex:1;">
+                            <input type="number" id="raw-dialogue-context-rounds-input" min="1" max="10" value="3" style="width:40px; text-align:center; font-size:11px; border:1px solid #cbd5e1; border-radius:4px; padding:2px;">
+                            <span id="raw-dialogue-context-rounds-val" style="font-size:10px; color:#64748b; min-width:28px;">3 轮</span>
+                          </div>
+                          <!-- 跳过最近轮数 -->
+                          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                            <label style="font-size:11px; font-weight:700; color:#334155; white-space:nowrap; min-width:70px;">跳过最近</label>
+                            <input type="range" id="raw-dialogue-recent-skip" min="0" max="20" step="1" value="5" style="flex:1;">
+                            <span id="raw-dialogue-recent-skip-val" style="font-size:11px; font-weight:700; color:#1d4ed8; min-width:36px; text-align:right;">5 轮</span>
+                          </div>
+                          <!-- 补建按钮 -->
+                          <button id="btn-rebuild-raw-dialogue-vectors" class="btn btn-outline" style="width:100%; padding:8px; font-size:11px; border-color:#1d4ed8; color:#1d4ed8; border-radius:8px; font-weight:700; cursor:pointer;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:4px;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>一键补建历史原始对话向量
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -2793,6 +3558,11 @@
 
                     <!-- 5. 保存并应用 -->
                     <button class="btn btn-primary" onclick="cotSystem.saveSessionConfig()" style="width:100%; height:42px; font-size:13px; font-weight:700; border-radius:12px; background:#07c160; border:none; box-shadow: 0 4px 12px rgba(7,193,96,0.2);">应用思维链到本对话</button>
+
+                    <!-- 6. 线下美化正则 (独立板块，与思维链解耦，自动保存) -->
+                    <div class="mcp-card" id="offline-beautify-section" style="background:#ffffff; border:1.5px solid #c4b5fd; border-radius:12px; padding:12px; box-shadow: var(--shadow-sm); margin-top:16px; margin-bottom:12px;">
+                      <!-- 动态渲染 -->
+                    </div>
                   </div>
                 </div>
 
@@ -2977,11 +3747,105 @@
                       <!-- 硬件定位与天气卡片 -->
                       <div class="mcp-card" style="background:#ffffff; border:1.5px solid var(--border); border-radius:12px; padding:12px; box-shadow: var(--shadow-sm);">
                         <h4 style="margin:0 0 10px 0; font-size:13px; color:var(--text-secondary); display:flex; align-items:center; gap:6px; font-weight:700;">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:4px;"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>GPS 定位 & 实时气象
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:4px;"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>GPS 定位 & 实时气象 & 电量
                         </h4>
                         <div id="mcp-geo-status" style="font-size:13px; font-weight:700; color:var(--text-primary);">尚未同步设备定位</div>
                         <div id="mcp-weather-status" style="font-size:12px; color:var(--text-secondary); margin-top:4px;">实时天气信息将在此展现</div>
-                        <button class="btn btn-outline" onclick="mcpSystem.syncLocation()" style="width:100%; margin-top:10px; font-size:11px; padding:8px; border-radius:8px; font-weight:600; cursor:pointer;">读取手机 GPS 并同步给 AI 伙伴</button>
+                        <div id="mcp-battery-status" style="font-size:12px; color:var(--text-secondary); margin-top:4px;">设备真实电量将在此展现</div>
+                        <div id="mcp-nowplaying-status" style="font-size:12px; color:var(--text-secondary); margin-top:4px;">正在播放：尚未同步（歌名/歌手，需开启通知使用权）</div>
+                        <div style="font-size:10px; margin-top:3px;">
+                          <span style="color:#6366f1; cursor:pointer; text-decoration:underline;" onclick="mcpSystem.syncNowPlaying()">重新读取</span>
+                          <span style="color:#6366f1; cursor:pointer; text-decoration:underline; margin-left:10px;" onclick="mcpSystem.debugNowPlaying()">诊断为什么读不到</span>
+                        </div>
+                        <button class="btn btn-outline" onclick="mcpSystem.syncLocation()" style="width:100%; margin-top:10px; font-size:11px; padding:8px; border-radius:8px; font-weight:600; cursor:pointer;">读取手机 GPS / 电量 / 正在播放并同步给 AI 伙伴</button>
+                      </div>
+
+                      <!-- 蓝牙设备管理卡片（可点击展开/收起） -->
+                      <details class="mcp-card" style="background:#ffffff; border:1.5px solid var(--border); border-radius:12px; box-shadow: var(--shadow-sm); overflow:hidden;">
+                        <summary style="padding:12px; cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-secondary); font-weight:700;">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-right:4px; color:var(--primary);"><path d="M7 7l10 10-5 5V2l5 5L7 17"/><path d="M7 17l10-10"/></svg>蓝牙设备管理（AI 可控）
+                          <span id="mcp-bt-summary" style="margin-left:auto; font-size:10px; color:var(--text-secondary);">点击展开 ▾</span>
+                        </summary>
+                        <div style="padding:0 12px 12px 12px;">
+                          <div style="display:flex; gap:6px; margin-bottom:8px;">
+                            <button class="btn btn-outline" onclick="mcpSystem.loadBluetoothDevices()" style="flex:1; font-size:11px; padding:8px; border-radius:8px; font-weight:600; cursor:pointer;">刷新已连接 / 已配对设备</button>
+                            <button class="btn btn-outline" onclick="mcpSystem.openBluetoothSettings()" style="flex:1; font-size:11px; padding:8px; border-radius:8px; font-weight:600; cursor:pointer;">添加设备（系统配对）</button>
+                          </div>
+                          <div id="mcp-bt-list" style="font-size:11px; color:var(--text-secondary); line-height:1.5; max-height:260px; overflow-y:auto;">尚未读取，点击"刷新"查看设备</div>
+                          <div style="margin-top:10px; border-top:1px dashed var(--border); padding-top:8px;">
+                            <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
+                              <span style="font-size:11px; font-weight:700; color:var(--text-primary);">BLE 扫描</span>
+                              <button class="btn btn-outline" onclick="mcpSystem.scanBle()" style="font-size:10px; padding:6px 10px; border-radius:8px; font-weight:600; cursor:pointer;">扫描周围 BLE 设备</button>
+                            </div>
+                            <div id="mcp-ble-list" style="font-size:11px; color:var(--text-secondary); line-height:1.5; max-height:200px; overflow-y:auto;">支持扫描并写入 BLE 特征值，控制智能硬件</div>
+                          </div>
+                          <div style="margin-top:8px; font-size:10px; color:var(--text-secondary); line-height:1.5;">
+                            * 每个设备可独立开关"注入提示词"；开启后 AI 能感知该设备，并通过
+                            <code style="background:#f1f5f9; padding:1px 4px; border-radius:4px;">[BLUETOOTH_CMD]</code> 指令像放歌一样随时控制它（耳机类可调音量/播放暂停/切歌；BLE/串口设备点击"能力配置"定义命令映射）。
+                            <br>* BLE 玩具（如 ANKNI MR-Z 等谜姬/安可尼设备）：进"能力配置"会自动套用内置协议（保活持续震动），保存后点<b style="color:#6366f1;">复制AI提示词</b>可把它的控制规则粘进角色卡；用户也可按同样流程添加自己的其它蓝牙设备。
+                            <br>* Android 13+ 系统限制应用直接开关蓝牙；12+ 需允许"附近设备"权限（被拒后可点刷新重新申请或跳系统设置开启）。
+                          </div>
+                          <details ontoggle="mcpSystem.renderBtGuide()" style="margin-top:8px; border-top:1px dashed var(--border); padding-top:8px;">
+                            <summary style="font-size:11px; color:#4338ca; font-weight:700; cursor:pointer; list-style:none;">📘 蓝牙设备适配教程提示词（复制给 AI / 照做即可适配任意 BLE 设备）</summary>
+                            <div id="mcp-bt-guide" style="font-size:10px; white-space:pre-wrap; line-height:1.55; background:#f8fafc; border-radius:8px; padding:8px; margin-top:6px; max-height:240px; overflow-y:auto; color:var(--text-secondary);"></div>
+                            <button onclick="mcpSystem.copyBtAdaptGuide()" style="margin-top:6px; width:100%; padding:7px; font-size:11px; font-weight:700; border-radius:8px; border:1.5px solid #4338ca; background:#eef2ff; color:#4338ca; cursor:pointer;">📋 复制完整适配教程提示词</button>
+                          </details>
+                        </div>
+                      </details>
+
+                      <!-- 蓝牙设备能力档案配置弹窗 -->
+                      <div id="bt-profile-editor-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center; padding:16px;">
+                        <div style="background:#ffffff; border-radius:14px; width:92%; max-width:430px; max-height:86vh; overflow-y:auto; padding:16px; box-shadow: var(--shadow-md);">
+                          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                            <div style="font-size:14px; font-weight:700; color:var(--text-primary);">设备能力配置</div>
+                            <button onclick="mcpSystem.closeBtProfileEditor()" style="border:none; background:none; font-size:18px; cursor:pointer; color:#9ca3af; line-height:1;">✕</button>
+                          </div>
+                          <div id="bt-profile-device-name" style="font-size:12px; color:var(--text-secondary); margin-bottom:10px; word-break:break-all;"></div>
+                          <label style="font-size:11px; font-weight:700; color:var(--text-primary);">设备类型</label>
+                          <select id="bt-profile-type" onchange="mcpSystem.onBtProfileTypeChange()" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:8px; font-size:12px; margin:4px 0 8px 0; background:#fff;">
+                            <option value="auto">自动识别（耳机→媒体控制，其他→串口原始发送）</option>
+                            <option value="media">媒体设备（音量 / 播放暂停 / 切歌，走系统通道）</option>
+                            <option value="ble">BLE 设备（特征值写入，需 UUID + 命令表）</option>
+                            <option value="spp">串口设备（文本命令表）</option>
+                          </select>
+                          <div id="bt-profile-ble-fields" style="display:none; margin-bottom:8px;">
+                            <label style="font-size:11px; font-weight:700; color:var(--text-primary);">Service UUID</label>
+                            <input id="bt-profile-svc" oninput="mcpSystem.onBtSvcCharInput()" placeholder="如 0000ffe0-0000-1000-8000-00805f9b34fb" style="width:100%; padding:5px 6px; border:1px solid var(--border); border-radius:6px; font-size:10px; background:#fff; margin:2px 0 4px 0;">
+                            <label style="font-size:11px; font-weight:700; color:var(--text-primary);">Characteristic UUID</label>
+                            <div style="display:flex; gap:4px; align-items:center; margin:2px 0 4px 0;">
+                              <input id="bt-profile-char" oninput="mcpSystem.onBtSvcCharInput()" placeholder="如 0000ffe1-0000-1000-8000-00805f9b34fb" style="flex:1; min-width:0; padding:5px 6px; border:1px solid var(--border); border-radius:6px; font-size:10px; background:#fff;">
+                              <button onclick="mcpSystem.discoverBleServices()" style="flex-shrink:0; padding:5px 8px; font-size:10px; font-weight:700; border-radius:6px; border:1.5px solid #0891b2; background:#ecfeff; color:#0e7490; cursor:pointer;">发现服务</button>
+                            </div>
+                            <div id="bt-profile-svc-result" style="font-size:10px; color:var(--text-secondary); line-height:1.5; max-height:150px; overflow-y:auto; background:#f8fafc; border-radius:8px; padding:6px;"></div>
+                            <div style="display:flex; gap:4px; margin-top:6px;">
+                              <button onclick="mcpSystem.applyPresetDetect()" style="flex:1; padding:5px 6px; font-size:10px; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; background:#f0fdf4; color:#15803d; cursor:pointer;">套用内置预设(ANKNI等)</button>
+                              <button onclick="mcpSystem.discoverBleServices()" style="flex:1; padding:5px 6px; font-size:10px; font-weight:700; border-radius:6px; border:1.5px solid #0891b2; background:#ecfeff; color:#0e7490; cursor:pointer;">重新发现服务</button>
+                            </div>
+                            <label style="display:flex; align-items:center; gap:6px; font-size:10px; color:var(--text-primary); margin-top:8px; cursor:pointer;">
+                              <input type="checkbox" id="bt-profile-hold" onchange="mcpSystem.onBtHoldToggle()" style="accent-color:#a855f7;">
+                              <span style="font-weight:700;">保活持续模式</span>
+                              <span style="color:var(--text-secondary);">(玩具类周期续帧防1~2s自停)</span>
+                            </label>
+                            <div id="bt-profile-hold-ms-row" style="display:none; font-size:10px; color:var(--text-secondary); margin:4px 0 6px 20px;">
+                              续帧间隔：<input type="number" id="bt-profile-hold-ms" value="150" min="50" max="3000" style="width:64px; padding:3px 4px; border:1px solid var(--border); border-radius:6px; font-size:10px;"> ms（默认150）
+                            </div>
+                            <div style="display:flex; gap:4px; margin-top:6px;">
+                              <button onclick="mcpSystem.testBtProfile()" style="flex:1; padding:5px 6px; font-size:10px; font-weight:700; border-radius:6px; border:1.5px solid #f59e0b; background:#fffbeb; color:#b45309; cursor:pointer;">试振1.2秒</button>
+                              <button onclick="mcpSystem.stopBtHoldTest()" style="flex:1; padding:5px 6px; font-size:10px; font-weight:700; border-radius:6px; border:1px solid #d1d5db; background:#f9fafb; color:#6b7280; cursor:pointer;">立即停</button>
+                              <button onclick="mcpSystem.copyBtPromptFromEditor()" style="flex:1.4; padding:5px 6px; font-size:10px; font-weight:700; border-radius:6px; border:1.5px solid #6366f1; background:#eef2ff; color:#4338ca; cursor:pointer;">复制AI提示词</button>
+                            </div>
+                            <div id="bt-profile-hold-status" style="font-size:10px; color:var(--text-secondary); line-height:1.5; margin-top:6px; word-break:break-all;"></div>
+                          </div>
+                          <div style="font-size:11px; font-weight:700; color:var(--text-primary); margin:8px 0 4px 0;">命令映射表（AI 语义命令 → 设备数据）</div>
+                          <div id="bt-profile-command-rows"></div>
+                          <button onclick="mcpSystem.addBtProfileCommandRow()" style="margin-top:4px; width:100%; padding:6px; font-size:11px; font-weight:700; border-radius:8px; border:1.5px dashed #a855f7; background:#faf5ff; color:#9333ea; cursor:pointer;">+ 添加命令</button>
+                          <div style="font-size:10px; color:var(--text-secondary); line-height:1.6; margin-top:8px;">
+                            占位符：{value} 十进制 · {value:byte} 单字节十六进制 · {value:hex} 两位十六进制 · {on}=1 · {off}=0 · <b style="color:#9333ea;">{csum}</b>=对前序全部字节累加取低8位(hex)<br>
+                            示例（ANKNI 震动帧）：AA0801{value:hex}{csum} → 强度50 = AA080132E5 · 停止帧可直接写 AA080100B3<br>
+                            自定义设备做法：先把设备"发现服务"出可写特征 → 参考上面填模板 → 试振验证 → 保存并开启注入 → 复制AI提示词即可让角色按命令字控制
+                          </div>
+                          <button onclick="mcpSystem.saveBtProfile()" style="margin-top:10px; width:100%; padding:8px; font-size:12px; font-weight:700; border-radius:8px; border:none; background:var(--primary); color:#fff; cursor:pointer;">保存配置</button>
+                        </div>
                       </div>
 
                       <!-- 屏幕使用时长卡片 -->
@@ -3020,6 +3884,7 @@
                           </select>
                         </div>
                         <div id="mcp-alarm-status" style="display:none;"></div>
+                        <button class="btn btn-danger-outline" onclick="mcpSystem.stopAlarmRingtone()" style="width:100%; font-size:11px; padding:8px; border-radius:8px; font-weight:600; cursor:pointer; color:#dc2626; border-color:#fca5a5; background:none; margin-bottom:6px;">停止闹钟铃声（响铃时点击）</button>
                         <button class="btn btn-danger-outline" onclick="mcpSystem.triggerVibration()" style="width:100%; font-size:11px; padding:8px; border-radius:8px; font-weight:600; cursor:pointer; color:#ef4444; border-color:#fca5a5; background:none;">测试设备物理马达震动反馈</button>
                       </div>
 
@@ -3170,6 +4035,7 @@
                     <button id="btn-menu-multi">多选消息</button>
                     <button id="btn-menu-delete-single">删除此条</button>
                     <button id="btn-menu-recall">撤回消息</button>
+                    <button id="btn-menu-branch" style="color: #059669; font-weight: 700; display: none;">在此刻分支</button>
                     <button id="btn-menu-cancel" class="cancel-btn">取消</button>
                   </div>
                 </div>
@@ -3553,6 +4419,14 @@
                   <div class="app-icon-img-wrapper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
                   <span>音乐</span>
                 </div>
+                <div class="check-phone-app-icon" data-app="monitor" style="cursor: pointer;">
+                  <div class="app-icon-img-wrapper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="1"/></svg></div>
+                  <span>监控</span>
+                </div>
+                <div class="check-phone-app-icon" data-app="files" style="cursor: pointer;">
+                  <div class="app-icon-img-wrapper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+                  <span>文件管理</span>
+                </div>
               </div>
             </div>
 
@@ -3561,6 +4435,46 @@
           </div>
         </div>
       </div>
+
+      <!-- ===== 应用小助手聊天面板 (覆盖在 win-chat 之上) ===== -->
+      <div id="assistant-panel" class="assistant-panel">
+        <div class="assistant-header">
+          <button class="btn-back" onclick="AppAssistant.closePanel()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <div class="assistant-title-wrap">
+            <div class="assistant-avatar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+            </div>
+            <div class="assistant-title-text">
+              <div class="name">应用小助手</div>
+              <div class="sub">功能导航 & 美化代码查询</div>
+            </div>
+          </div>
+          <button class="btn-clear" onclick="AppAssistant.clearHistory()" title="清空对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="assistant-messages" class="assistant-messages"></div>
+        <div class="assistant-input-container">
+          <textarea id="assistant-input" placeholder="输入问题或快捷指令（如“mcp在哪？”或“/帮助”）" oninput="AppAssistant.autoResize()" onkeydown="AppAssistant.onKeydown(event)"></textarea>
+          <button class="assistant-send-btn" onclick="AppAssistant.send()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <!-- ===== 应用小助手聊天面板 结束 ===== -->
     </div> <!-- 聊天应用(win-chat)结束 -->
 
       <!-- === 4.5 独立深谈应用 (win-deeptalk) === -->
@@ -3766,11 +4680,12 @@
             <div class="method-tab active" id="sticker-method-upload" onclick="stickerSystem.switchStickerAddMethod('upload')">单张上传</div>
             <div class="method-tab" id="sticker-method-batch" onclick="stickerSystem.switchStickerAddMethod('batch')">URL批量</div>
           </div>
-          <!-- 方法1：单张上传 -->
+          <!-- 方法1：本地照片上传（支持多选批量） -->
           <div id="sticker-upload-area">
             <div class="form-group">
-              <label>选择图片</label>
-              <input type="file" id="sticker-file-input" accept="image/*">
+              <label>选择图片（可多选批量导入）</label>
+              <input type="file" id="sticker-file-input" accept="image/*" multiple onchange="stickerSystem.previewStickerFiles()">
+              <div style="font-size:10px; color:var(--text-secondary); margin-top:4px;">选择多张图片时，将以文件名作为释义自动批量导入。</div>
             </div>
             <div id="sticker-upload-preview" style="margin:8px 0;min-height:60px;"></div>
             <div style="display:flex;gap:8px;margin-top:12px;">
@@ -3860,6 +4775,12 @@
               <div class="form-group">
                 <label>情景设定 (注入到 System Prompt 之后)</label>
                 <textarea id="theater-scenario" rows="3" required placeholder="描述见面的背景、环境氛围、天气、此时此刻发生的事等。"></textarea>
+              </div>
+              <div class="form-group" id="theater-attendee-group" style="display:none;">
+                <label>选择出席人物（群聊剧场专属，不选则默认全员出席，群助手自动排除）</label>
+                <div id="theater-attendee-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; min-height:8px;"></div>
+                <button type="button" class="btn btn-outline" id="theater-attendee-toggle" style="width:100%; font-size:12px;">+ 添加出席人物</button>
+                <div id="theater-attendee-list" style="display:none; max-height:200px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:6px; margin-top:6px; background:var(--bg-main);"></div>
               </div>
               <div class="form-group" style="display: flex; gap: 10px;">
                 <div style="flex: 1;">
@@ -3954,6 +4875,7 @@
             <button id="btn-offline-menu-favorite">收藏消息</button>
             <button id="btn-offline-menu-multi">多选消息</button>
             <button id="btn-offline-menu-delete-single">删除此条</button>
+            <button id="btn-offline-menu-branch" style="color: #059669; font-weight: 700; display: none;">在此刻分支</button>
             <button id="btn-offline-menu-cancel" class="cancel-btn">取消</button>
           </div>
         </div>
@@ -3995,6 +4917,16 @@
               <label>每轮最大字数</label>
               <input type="number" id="offline-detail-max-word" value="200">
             </div>
+          </div>
+          <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:#fafbfc; border:1.5px solid var(--border); border-radius:10px; padding:10px 12px;">
+            <div style="text-align:left;">
+              <div style="font-size:12.5px; font-weight:700; color:var(--text-primary);">携带线上主聊天记忆与人物关系快照</div>
+              <div style="font-size:11px; color:var(--text-secondary); margin-top:3px; line-height:1.5;">开启后：线上总结记忆、关系网定位、人设自定义会带进线下；关闭则回退到档案本色，像陌生人第一次见面。</div>
+            </div>
+            <label class="switch" style="flex-shrink:0;">
+              <input type="checkbox" id="offline-detail-carry-memory" checked>
+              <span class="slider round"></span>
+            </label>
           </div>
           <div class="form-group">
             <label style="font-weight: 700; margin-bottom: 6px; display: block;">自定义挂载世界书 (按分组折叠勾选，默认继承线上)</label>
@@ -4232,6 +5164,41 @@
         </div>
       </div>
 
+      <!-- 线下美化正则编辑弹层 (单卡片三字段：名称/表达式/HTML/提示词) -->
+      <div id="offline-beautify-edit-overlay" class="modal-overlay" style="z-index: 2000; align-items: center !important; justify-content: center !important;">
+        <div class="modal" style="max-width: 360px; width: 92vw; border-radius: 16px; border: 1px solid #e2e8f0; background: #ffffff; position: relative; bottom: auto; transform: none; margin: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+          <header class="modal-header" style="border-bottom: none; padding: 16px 16px 8px 16px;">
+            <h4 id="offline-beautify-edit-title" style="font-weight: 700; color: #1e293b; font-size:15px; margin:0;">新建线下美化正则</h4>
+            <button class="btn-icon" onclick="document.getElementById('offline-beautify-edit-overlay').classList.remove('active')">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+          </header>
+          <div class="win-body" style="padding: 0 16px 16px 16px; max-height: 70vh; overflow-y: auto;">
+            <input type="hidden" id="ob-edit-index">
+            <div class="form-group" style="margin-bottom:10px;">
+              <label style="font-size:11px; font-weight:700; color:#475569; display:block; margin-bottom:4px;">名称</label>
+              <input type="text" id="ob-edit-name" style="width:100%; font-size:13px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); box-sizing:border-box;" placeholder="例如：状态栏、手机消息气泡">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label style="font-size:11px; font-weight:700; color:#475569; display:block; margin-bottom:4px;">查找正则 (Pattern，支持捕获组)</label>
+              <textarea id="ob-edit-pattern" rows="3" style="width:100%; font-family:monospace; font-size:11px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); resize:none; box-sizing:border-box;" placeholder="\[TAG\]([\s\S]*?)\[\/TAG\]"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label style="font-size:11px; font-weight:700; color:#475569; display:block; margin-bottom:4px;">HTML 替换体 (支持 $1/$2 捕获组，可直接写 HTML)</label>
+              <textarea id="ob-edit-replacement" rows="4" style="width:100%; font-family:monospace; font-size:11px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); resize:none; box-sizing:border-box;" placeholder="<div>$1</div>"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label style="font-size:11px; font-weight:700; color:#475569; display:block; margin-bottom:4px;">注入提示词 (开启时注入到 AI Prompt，留空则不注入)</label>
+              <textarea id="ob-edit-prompt" rows="4" style="width:100%; font-size:11px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); resize:none; box-sizing:border-box;" placeholder="要求 AI 按特定格式输出标记..."></textarea>
+            </div>
+            <div class="form-actions" style="margin-top:16px; display:flex; gap:12px;">
+              <button onclick="document.getElementById('offline-beautify-edit-overlay').classList.remove('active')" class="btn-outline" style="flex:1; border-radius:8px; padding: 8px; font-size: 12px; border: 1.5px solid var(--border); background: none; cursor: pointer;">取消</button>
+              <button id="btn-save-offline-beautify" class="btn-primary" style="flex:1; border-radius:8px; padding: 8px; font-size: 12px; background-color: #6d28d9; border: none; color: #fff; cursor: pointer;">保存</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 记忆碎片删除确认弹层 (精致轻巧小气泡确认卡) -->
       <div id="memory-delete-overlay" class="modal-overlay" style="z-index: 2000; align-items: center !important; justify-content: center !important;">
         <div class="modal" style="max-width: 280px; border-radius: 16px; border: 1px solid #e2e8f0; background: #ffffff; position: relative; bottom: auto; transform: none; margin: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
@@ -4260,7 +5227,7 @@
                 <line x1="12" y1="2" x2="12" y2="4"/>
                 <line x1="12" y1="20" x2="12" y2="22"/>
                 <circle cx="12" cy="12" r="3"/>
-              </svg> 同心脑电波心声</h4>
+              </svg> 同心脑电波心声<span id="status-card-scope-label" style="font-size:10.5px; font-weight:700; color:#ec4899; background:rgba(236,72,153,0.10); border-radius:8px; padding:2px 8px; margin-left:8px; vertical-align:middle;">线上</span></h4>
             <div style="display: flex; gap: 8px; align-items: center;">
               <button class="btn btn-outline" id="btn-status-history" style="font-size: 11px; padding: 6px 12px; border-radius:12px; font-weight:700;">
                 历史记录
@@ -4423,7 +5390,7 @@
           </header>
           <div class="win-body" style="padding: 0 16px 16px 16px;">
             <div class="form-group" style="margin-bottom: 12px;">
-              <label style="font-size: 11px; color: var(--text-secondary); font-weight:700;">选择本地图片 (若不选，系统将默认提供场景占位卡片)</label>
+              <label style="font-size: 11px; color: var(--text-secondary); font-weight:700;">选择本地照片（视觉模型可直接看图；不选则发送场景占位卡片）</label>
               <div style="display:flex; gap:8px; align-items:center;">
                 <button type="button" class="btn btn-outline" onclick="document.getElementById('image-file-input').click()" style="padding:8px 12px; font-size:11px; border-radius:8px;">选择本地文件</button>
                 <span id="image-file-name-label" style="font-size:11px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px;">未选择文件</span>
@@ -4431,8 +5398,8 @@
               <input type="file" id="image-file-input" accept="image/*" style="display:none;" onchange="document.getElementById('image-file-name-label').innerText = this.files[0] ? this.files[0].name : '未选择文件'">
             </div>
             <div class="form-group" style="margin-bottom: 20px;">
-              <label style="font-size: 11px; color: var(--text-secondary); font-weight:700;">画面具体场景描述 (必填，用于 AI 识别感知)</label>
-              <textarea id="image-input-text" rows="3" placeholder="例如：一张我和他并肩坐在草坪上的自拍合照，背景是晚霞" style="border-radius: 10px; font-size: 13px; resize:none;"></textarea>
+              <label style="font-size: 11px; color: var(--text-secondary); font-weight:700;">画面说明（可选）</label>
+              <textarea id="image-input-text" rows="3" placeholder="可留空；若模型不支持看图，建议写一句说明，例如：一张我和他并肩坐在草坪上的自拍合照" style="border-radius: 10px; font-size: 13px; resize:none;"></textarea>
             </div>
             <div class="form-actions" style="display: flex; gap: 10px;">
               <button type="button" class="btn btn-outline" onclick="document.getElementById('image-input-overlay').classList.remove('active')" style="flex: 1; border-radius: 10px; height: 40px; font-size: 13px;">取消</button>
@@ -4533,7 +5500,17 @@
 
               <!-- 写书提示词预设管理器 -->
               <div style="padding: 0 16px;">
+                <!-- 写书入口（我的创作）-->
                 <div class="bookstore-section-title" style="margin-top:0;">
+                  <span>我的创作</span>
+                  <button class="refresh-trigger-btn" onclick="readerSystem.openNewBookFullscreen()">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    新建书
+                  </button>
+                </div>
+                <div class="me-menu" id="reader-author-works-container" style="background:#fff; border-radius:12px; border:1px solid var(--border); overflow:hidden; margin-bottom: 16px;"></div>
+
+                <div class="bookstore-section-title">
                   <span>写书提示词预设</span>
                   <button class="refresh-trigger-btn" onclick="readerSystem.triggerAddReaderPresetDialog()">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -4543,6 +5520,22 @@
                 <div class="me-menu" id="reader-presets-container" style="background:#fff; border-radius:12px; border:1px solid var(--border); overflow:hidden;"></div>
               </div>
             </section>
+
+            <!-- 作者工坊浮层（全屏原生写作页面，脱离阅读窗口层级）-->
+            <div id="reader-author-studio-overlay" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:99999; background:var(--bg-main); display:none; flex-direction:column; opacity:0; transition:opacity 0.3s ease;">
+              <header style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <button onclick="readerSystem.exitAuthorStudio()" style="background:none; border:none; cursor:pointer; color:var(--text-sub); padding:4px;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <h4 id="author-studio-title" style="font-weight:700; font-size:15px; margin:0;">我的创作</h4>
+                </div>
+                <button id="author-studio-pen-btn" onclick="readerSystem.penBtnClick()" style="background:none; border:none; cursor:pointer; color:var(--text-sub); padding:6px; border-radius:6px;" title="召唤角色协助写作">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+                </button>
+              </header>
+              <div id="author-studio-body" style="flex:1; overflow-y:auto; padding:16px;"></div>
+            </div>
           </div>
 
           <footer class="win-footer chat-tabs" style="background-color: #ffffff; border-top: 1px solid var(--border);">
@@ -4668,6 +5661,13 @@
               <span style="font-size:11px; color:#64748b; font-weight:700;">文字自定义色值：</span>
               <button class="btn btn-outline" style="padding:4px 8px; font-size:10px;" onclick="readerSystem.selectReadingTextCustomColor()">调色盘</button>
             </div>
+            <!-- 正文字体选择（仅作用于阅读正文，不影响全局） -->
+            <div class="reading-menu-row">
+              <span style="font-size:11px; color:#64748b; font-weight:700;">正文字体：</span>
+              <select id="reader-font-select" style="padding:3px 6px; font-size:11px; border:1px solid #cbd5e1; border-radius:6px; max-width:140px;" onchange="readerSystem.selectReadingFont(this.value)">
+                <option value="">系统默认</option>
+              </select>
+            </div>
           </div>
 
             </div> <!-- 关闭 win-reading-room -->
@@ -4784,28 +5784,14 @@
             <button class="btn-icon btn-sub-back">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </button>
-            <h3>纪念日程</h3>
-            <div style="display:flex; gap:8px;">
-              <button class="btn-icon" id="btn-couples-cal-sync-toggle" title="计入聊天上下文">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-              </button>
-              <button class="btn-icon" id="btn-couples-cal-add">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-              </button>
-            </div>
+            <h3>纪念日</h3>
+            <button class="btn-icon" id="btn-couples-cal-add">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
           </header>
           <div class="couples-sub-body">
-            <div class="couples-calendar-container">
-              <div class="couples-calendar-header">
-                <span id="couples-cal-month-title">2026年 7月</span>
-                <span style="font-size:11px; color:#ff8fa3; cursor:pointer;" id="btn-couples-cal-ai">AI一键推演日程</span>
-              </div>
-              <div class="couples-month-grid" id="couples-calendar-month-flow"></div>
-              <div class="bookstore-section-title">
-                <span>今日日程表</span>
-              </div>
-              <div id="couples-calendar-events-flow" style="display:flex; flex-direction:column; gap:8px;"></div>
-            </div>
+            <!-- 纯倒数：只纪念，不排日程（日程已迁到「仪轨」） -->
+            <div id="couples-anniv-list" style="display:flex; flex-direction:column; gap:12px;"></div>
           </div>
         </div>
 
@@ -4878,23 +5864,25 @@
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </button>
             <h3>私密悄悄话</h3>
-            <button class="btn-icon" id="btn-couples-whisper-topic" title="发起灵魂话题">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            </button>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button class="btn-icon" id="btn-couples-whisper-topic" title="换一期 / 选话题">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </button>
+              <button class="btn-icon" id="btn-couples-whisper-settings" title="悄悄话设置">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.35.44.62.82.74H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
+            </div>
           </header>
           <div class="couples-whisper-chat-flow" id="couples-whisper-messages-flow"></div>
-          <div id="couples-whisper-topic-status-bar" style="display:none; background:rgba(239, 68, 68, 0.08); border-bottom:1.5px solid #fecdd3; padding:8px 16px; font-size:11px; font-weight:700; color:#ef4444; text-align:center; justify-content:space-between; align-items:center;">
-            <span id="couples-whisper-topic-title">探讨话题中...</span>
-            <button class="btn-group-announcement-done" id="btn-couples-whisper-topic-end" style="background:#ef4444; font-size:9px; padding:2px 6px; border-radius:4px;">结束话题</button>
+          <div class="couples-whisper-session-bar" id="couples-whisper-topic-status-bar" style="display:none;">
+            <span id="couples-whisper-topic-title">这一期</span>
+            <button id="btn-couples-whisper-topic-end" title="收好这一期（会写进你们的记忆）">收好这一期</button>
           </div>
           <div class="dialog-input-container" style="background-color: #ffffff; border-top: 1px solid var(--border);">
             <div class="input-main-row">
-              <textarea id="couples-whisper-input" rows="1" placeholder="说点极度深情的话..."></textarea>
-              <button class="chat-send-btn" id="btn-couples-whisper-send" style="background-color: #ec4899;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-              </button>
-              <button class="chat-send-btn reply" id="btn-couples-whisper-reply" style="background-color: #a78bfa;" title="获取情绪化回复">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1 17.75 3.75 15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5 2.5-5.5 5.5-2.5-5.5-2.5zm7.5 5l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 14.5z"/></svg>
+              <textarea id="couples-whisper-input" rows="1" placeholder="想说什么就说吧...（回车发送）"></textarea>
+              <button class="chat-send-btn reply" id="btn-couples-whisper-reply" title="让对方说话">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1 17.75 3.75 15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5 2.5-5.5 5.5-2.5-5.5-2.5zm7.5 5l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 14.5z"/></svg>
               </button>
             </div>
           </div>
@@ -4956,6 +5944,9 @@
               </div>
               <button class="btn btn-outline" onclick="musicSystem.openNcmLoginModal()" style="padding:6px 10px; font-size:10px; border-color:#ec4141; color:#ec4141; border-radius:12px; font-weight:700;">网易云扫码</button>
             </div>
+
+            <!-- 网易云一键同步条 -->
+            <div id="ncm-sync-bar"></div>
 
             <!-- 1. 独立歌单分组区域 -->
             <div class="ncm-section-title" style="margin-top:8px;">
@@ -5044,8 +6035,9 @@
             <input type="hidden" id="ncm-form-import-type" value="local">
             
             <div class="form-group" id="ncm-form-file-group" style="margin-bottom:10px;">
-              <label style="font-size:11px; font-weight:700;">选择本地音频文件</label>
-              <input type="file" id="ncm-form-file-input" accept="audio/*" style="font-size:11px;">
+              <label style="font-size:11px; font-weight:700;">选择本地音频文件（可多选批量导入）</label>
+              <input type="file" id="ncm-form-file-input" accept="audio/*" multiple style="font-size:11px;" onchange="musicSystem.previewLocalFileCount()">
+              <div id="ncm-form-file-hint" style="font-size:10px; color:#64748b; margin-top:4px;">选择多个文件时，将以文件名作为歌名批量导入。</div>
             </div>
 
             <div class="form-group" id="ncm-form-url-group" style="display:none; margin-bottom:10px;">
@@ -5195,14 +6187,8 @@
           </div>
         </div>
 
-        <!-- 4. 角色陪听选择器 Modal (层级拉高至 100005 避免压在听歌卡片下方) -->
-        <div id="ncm-companion-selector-overlay" class="modal-overlay" style="z-index:100005; align-items:center !important; justify-content:center !important;">
-          <div class="modal" style="max-width:320px; padding:16px; border-radius:16px; background:#fff;">
-            <h4 style="margin:0 0 12px 0; font-size:15px; font-weight:800; color:#1e293b; text-align:center;">选择角色与你一起听歌</h4>
-            <div id="ncm-companion-cards-container" style="max-height:220px; overflow-y:auto; margin-bottom:12px;"></div>
-            <button class="btn btn-outline" onclick="musicSystem.closeCompanionSelector()" style="width:100%; padding:10px; font-size:12px; border-radius:8px;">取消</button>
-          </div>
-        </div>
+        <!-- 4. 角色陪听选择器 Modal 已移至全局层（见 win-music 结束标签之后），
+             使"一起听"角色选择器在任意页面都能唤出 -->
 
         <!-- 新建/导入歌单分组 Modal -->
         <div id="ncm-playlist-create-overlay" class="modal-overlay" style="z-index:1550; align-items:center !important; justify-content:center !important;">
@@ -5236,6 +6222,17 @@
         </div>
 
         </div> <!-- 听歌应用(win-music)结束 -->
+
+        <!-- ========================================== -->
+        <!-- 全局层：角色陪听选择器（已从 win-music 解救，灵动岛/聊天等任意页面可唤出） -->
+        <!-- ========================================== -->
+        <div id="ncm-companion-selector-overlay" class="modal-overlay" style="z-index:100005; align-items:center !important; justify-content:center !important;">
+          <div class="modal" style="max-width:320px; padding:16px; border-radius:16px; background:#fff;">
+            <h4 style="margin:0 0 12px 0; font-size:15px; font-weight:800; color:#1e293b; text-align:center;">选择角色与你一起听歌</h4>
+            <div id="ncm-companion-cards-container" style="max-height:220px; overflow-y:auto; margin-bottom:12px;"></div>
+            <button class="btn btn-outline" onclick="musicSystem.closeCompanionSelector()" style="width:100%; padding:10px; font-size:12px; border-radius:8px;">取消</button>
+          </div>
+        </div>
 
         <!-- ========================================== -->
         <!--           购物应用 (win-shopping)           -->
@@ -5345,7 +6342,111 @@
           <div id="qt-overlay"></div>
         </div> <!-- 快穿局应用(win-quicktravel)结束 -->
 
+        <!-- 工作台 Agent 应用窗口 -->
+        <div id="win-workbench" class="app-window" style="overflow:hidden; background:#f8fafc;">
+          <header class="win-header" style="padding:10px 14px; background:linear-gradient(180deg, rgba(255,255,255,0.8), rgba(255,255,255,0.4)); border-bottom:1px solid rgba(148,163,184,0.25);">
+            <button class="btn-icon" id="wb-close-btn" style="color:#475569;">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <h3 id="wb-title" style="color:#1e293b; font-size:15px; font-weight:700; letter-spacing:1px;">工作台</h3>
+            <span style="width:20px;"></span>
+          </header>
+          <div class="win-body" id="wb-body" style="padding:0; position:relative; color:#334155;"></div>
+          <div id="wb-overlay"></div>
+        </div> <!-- 工作台应用(win-workbench)结束 -->
+
+        <!-- 仪轨：日程 / 穿着 / 随身物品 / 位置 四维状态（简约日历） -->
+        <div id="win-yigui" class="app-window" style="overflow:hidden; background:#f7f8fa;">
+          <header class="win-header" style="padding:10px 14px; background:linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.55)); border-bottom:1px solid rgba(148,163,184,0.22);">
+            <button class="btn-icon" id="yigui-close-btn" style="color:#475569;">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <h3 style="color:#1e293b; font-size:15px; font-weight:700; letter-spacing:1px;">仪轨</h3>
+            <div id="yigui-subject-chip" style="display:flex; align-items:center; gap:6px; padding:4px 8px 4px 4px; border-radius:99px; background:#fff; border:1px solid #eef2f7; cursor:pointer; flex-shrink:0;"></div>
+          </header>
+          <div class="win-body" id="yigui-body" style="padding:14px 14px 26px; color:#334155; background:#f7f8fa;">
+            <!-- 月份导航 -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <button id="yigui-prev-month" style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border:1px solid #eef2f7; background:#fff; border-radius:10px; color:#64748b; cursor:pointer;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <div id="yigui-month-title" style="font-size:16px; font-weight:800; color:#1e293b; letter-spacing:.5px;"></div>
+              <button id="yigui-next-month" style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border:1px solid #eef2f7; background:#fff; border-radius:10px; color:#64748b; cursor:pointer;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+              </button>
+            </div>
+            <!-- 月历网格（JS 渲染） -->
+            <div id="yigui-grid" style="background:#fff; border:1px solid #eef2f7; border-radius:16px; padding:10px 6px 6px; margin-bottom:16px;"></div>
+            <!-- 当日四维（JS 渲染） -->
+            <div id="yigui-day-title" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;"></div>
+            <div id="yigui-day"></div>
+          </div>
+          <!-- 衣柜（全屏覆盖层，JS 渲染） -->
+          <div id="yigui-wardrobe" style="display:none; position:absolute; inset:0; z-index:20;"></div>
+        </div> <!-- 仪轨应用(win-yigui)结束 -->
+
+        <!-- 心动游戏（v1.5.21 新增）：与购物 / 工作台同级的主界面入口，功能本体待后续实装 -->
+        <!-- ⚠ 不要在这些窗口上写内联 position:relative！.app-window 靠 position:absolute 脱离文档流，
+             写了 relative 会让它变成流内元素被前面的窗口顶下去一屏（phone-container 是 overflow:hidden），
+             表现就是「点了没反应」——active 加了、内容也渲染了，但整窗在可视区外。 -->
+        <div id="win-heartgame" class="app-window" style="overflow:hidden; background:#fff7fb;">
+          <header class="win-header" style="padding:10px 14px; background:linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.55)); border-bottom:1px solid rgba(216,160,190,0.25);">
+            <button class="btn-icon" id="heartgame-close-btn" style="color:#7c5a6b;">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <h3 style="color:#5c4450; font-size:15px; font-weight:700; letter-spacing:1px;">心动游戏</h3>
+            <span style="width:20px;"></span>
+          </header>
+          <div class="win-body" id="heartgame-body" style="padding:0; position:relative; color:#5c4450;"></div>
+        </div> <!-- 心动游戏(win-heartgame)结束 -->
+
+        <!-- 占位图标（v1.5.21 新增）：预留给下一个功能的入口 -->
+        <!-- ⚠ 同上：不要写内联 position:relative -->
+        <div id="win-placeholder" class="app-window" style="overflow:hidden; background:#f7f9fe;">
+          <header class="win-header" style="padding:10px 14px; background:linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.55)); border-bottom:1px solid rgba(148,163,184,0.25);">
+            <button class="btn-icon" id="placeholder-close-btn" style="color:#475569;">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <h3 style="color:#334155; font-size:15px; font-weight:700; letter-spacing:1px;">占位图标</h3>
+            <span style="width:20px;"></span>
+          </header>
+          <div class="win-body" id="placeholder-body" style="padding:0; position:relative; color:#334155;"></div>
+        </div> <!-- 占位图标(win-placeholder)结束 -->
+
             </div> <!-- app-window-container 结束 -->
+
+      <!-- ===== 应用小助手 悬浮小窗（跳转/执行命令时收起为此窗）===== -->
+      <div id="assistant-float" class="assistant-float">
+        <div class="assistant-float-header" id="assistant-float-header">
+          <div class="assistant-float-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </div>
+          <div class="assistant-float-title">小助手</div>
+          <div class="assistant-float-actions">
+            <button class="assistant-float-btn" id="assistant-float-expand" title="展开">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+            </button>
+            <button class="assistant-float-btn" id="assistant-float-close" title="关闭">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        </div>
+        <div class="assistant-float-body" id="assistant-float-body">
+          <div class="assistant-float-messages" id="assistant-float-messages"></div>
+          <div class="assistant-float-input-bar">
+            <input type="text" id="assistant-float-input" placeholder="问我任何问题…" />
+            <button id="assistant-float-send" title="发送">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+          </div>
+        </div>
+        <div class="assistant-float-resize" id="assistant-float-resize"></div>
+      </div>
+      <!-- ===== 应用小助手 悬浮小窗 结束 ===== -->
 
       <!-- 桌面翻页指示器 -->
     <div id="desktop-page-indicator"></div>
@@ -5358,8 +6459,20 @@
       </div> <!-- phone-container 结束 -->
 
   <script src="db.js"></script>
+  <!-- 开屏启动动画（进度条由 bootSplash.ready() 收束；初始化异常也有 6s 兜底） -->
+  <script src="app_splash.js"></script>
+  <!-- 专用 API 路由：按功能解析生效的 API 预设（专用优先，未设置则跟随链接里的全局） -->
+  <script src="app_api_routes.js"></script>
   <script src="app_prompts.js"></script>
+  <!-- 上下文管理中枢：结构化 Prompt 可见/可开关/可排序（依赖 app_prompts.js 的构建器，须在其后） -->
+  <script src="app_context_manager.js"></script>
+  <!-- 世界书激活引擎：对标酒馆 World Info（插入位置/顺序/深度/关键词逻辑/概率/互斥组/粘滞冷却/预算） -->
+  <script src="app_world_book_engine.js"></script>
+  <!-- 多选分享聊天记录：打包选中消息 → 转发到同一面具下的其它聊天框 -->
+  <script src="app_chat_share_log.js"></script>
   <script src="app_desktop.js"></script>
+  <!-- 桌面自检守卫：旧档遗留的缩放/偏移把 Dock 推出屏幕时，一键恢复默认界面（v1.5.51） -->
+  <script src="app_desktop_guard.js"></script>
   <script src="app_settings.js"></script>
   <script src="app_changelog.js"></script>
   <script src="app_archive.js"></script>
@@ -5393,7 +6506,10 @@
   <script src="app_forum_messages.js"></script>
   <script src="app_chat_focus.js"></script>
   <script src="app_chat_check_phone.js"></script>
+  <!-- 反查手机：角色偷看 user 手机（自动跳页 + 即时调用查手机 API + 动线时间轴） -->
+  <script src="app_chat_reverse_check.js"></script>
   <script src="app_chat_group.js"></script>
+  <script src="app_chat_archives.js"></script>
   <script src="app_chat_search.js"></script>
   <script src="app_chat_couples.js"></script>
   <script src="app_chat_beautify.js"></script>
@@ -5403,7 +6519,27 @@
   <script src="app_image_gen.js"></script>
   <script src="app_encounter.js"></script>
   <script src="app_quicktravel.js"></script>
+  <script src="app_quicktravel_fanwall.js"></script>
+  <script src="app_workbench.js"></script>
+  <script src="app_workbench_agent.js"></script>
+  <!-- 仪轨：日程/穿着/随身物品/位置 四维状态（简约日历） -->
+  <script src="app_ritual.js"></script>
+  <!-- 心动游戏（v1.5.23 实装玩法本体）：内核 → 立绘/背景 → 抽卡工坊 → 主线剧情 → 静室 → 业务面板 → 主界面看板 -->
+  <script src="app_heartgame_core.js"></script>
+  <script src="app_heartgame_portraits.js"></script>
+  <script src="app_heartgame_gacha.js"></script>
+  <script src="app_heartgame_story.js"></script>
+  <script src="app_heartgame_quiet.js"></script>
+  <script src="app_heartgame_panels.js"></script>
+  <script src="app_heartgame.js"></script>
+  <link rel="stylesheet" href="workbench.css">
+  <script src="app_floating_widget.js"></script>
+  <script src="app_miniprogram.js"></script>
+  <script src="app_miniprogram_workshop.js"></script>
+  <script src="app_miniprogram_games.js"></script>
   <script src="app_router.js"></script>
+  <script src="app_assistant.js"></script>
+  <script src="app_auto_backup.js"></script>
   <script>
     // 微信展开面板滚动圆点指示器动态触发与点击导航脚本 (零依赖原生驱动)
     document.addEventListener("DOMContentLoaded", () => {
@@ -5431,5 +6567,40 @@
       }
     });
   </script>
+
+  <!-- 删除对话进度遮罩 -->
+  <div id="delete-progress-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:16px; padding:28px 32px; display:flex; flex-direction:column; align-items:center; gap:14px; min-width:220px; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+      <svg viewBox="0 0 24 24" width="32" height="32" style="color:#ef4444;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      </svg>
+      <div id="delete-progress-text" style="font-size:14px; font-weight:700; color:var(--text-primary); text-align:center;">正在删除对话...</div>
+      <div id="delete-progress-sub" style="font-size:11px; color:var(--text-secondary); text-align:center;">请稍候，正在清理所有关联数据</div>
+      <!-- 伪装进度条：非旋转视觉反馈，代替会转圈的垃圾桶 -->
+      <svg width="180" height="6" viewBox="0 0 180 6" style="margin-top:2px;">
+        <rect width="180" height="6" rx="3" fill="rgba(0,0,0,0.08)"></rect>
+        <rect height="6" rx="3" fill="#07c160">
+          <animate attributeName="width" from="20" to="165" dur="22.5s" repeatCount="indefinite"/>
+        </rect>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 清空记录进度遮罩（与删除对话同款过渡卡片，琥珀色主题） -->
+  <div id="clear-progress-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:16px; padding:28px 32px; display:flex; flex-direction:column; align-items:center; gap:14px; min-width:220px; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+      <svg viewBox="0 0 24 24" width="32" height="32" style="color:#b45309;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M9 14l2 2 4-4"/>
+      </svg>
+      <div id="clear-progress-text" style="font-size:14px; font-weight:700; color:var(--text-primary); text-align:center;">正在清空记录...</div>
+      <div id="clear-progress-sub" style="font-size:11px; color:var(--text-secondary); text-align:center;">请稍候，正在抹除所有对话数据</div>
+      <svg width="180" height="6" viewBox="0 0 180 6" style="margin-top:2px;">
+        <rect width="180" height="6" rx="3" fill="rgba(0,0,0,0.08)"></rect>
+        <rect height="6" rx="3" fill="#f59e0b">
+          <animate attributeName="width" from="20" to="165" dur="12s" repeatCount="indefinite"/>
+        </rect>
+      </svg>
+    </div>
+  </div>
 </body>
 </html>
